@@ -106,10 +106,7 @@ async def entrypoint(ctx: JobContext) -> None:
             temperature=0.7,
         ),
         tts=elevenlabs.TTS(**tts_kwargs),
-        # Reuse the prewarmed VAD from prewarm_fnc. Falls back to
-        # loading on-demand if for any reason userdata didn't cache one
-        # (e.g. dev mode without prewarm).
-        vad=ctx.proc.userdata.get("vad") or silero.VAD.load(),
+        vad=silero.VAD.load(),
         turn_detection=turn_detection,
         aec_warmup_duration=0,
     )
@@ -168,20 +165,16 @@ async def entrypoint(ctx: JobContext) -> None:
     await session.say(random.choice(HARVEY_GREETINGS), allow_interruptions=True)
 
 
-def prewarm(proc):
-    """Runs once per agent process at startup — BEFORE any job is
-    accepted. Preloads Silero VAD (torch model) and the RAG Chroma
-    index so the first job doesn't eat a 10s init timeout."""
-    proc.userdata["vad"] = silero.VAD.load()
-    try:
-        from rag import get_rag
-        get_rag()  # Open the Chroma DB + warm the embedding client.
-    except Exception:
-        pass
-
-
 def main() -> None:
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
+    # Default init timeout is 10s which is too tight once torch + chroma
+    # + legal prompt import all happen during cold start. Bump to 60s
+    # so the worker has headroom on slow first spawns.
+    cli.run_app(
+        WorkerOptions(
+            entrypoint_fnc=entrypoint,
+            initialize_process_timeout=60,
+        )
+    )
 
 
 if __name__ == "__main__":
