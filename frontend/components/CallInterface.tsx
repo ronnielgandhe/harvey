@@ -501,8 +501,6 @@ export function CallInterface({ onEnd }: Props) {
         const t = paneArrivedAtRef.current.get(p.id) ?? 0;
         return now - t < BATCH_WINDOW_MS;
       });
-      // Housekeeping: drop arrival-time entries for panes we're
-      // evicting so the Map doesn't grow unbounded over a long call.
       for (const id of Array.from(paneArrivedAtRef.current.keys())) {
         if (id !== newPane.id && !kept.some((p) => p.id === id)) {
           paneArrivedAtRef.current.delete(id);
@@ -510,6 +508,11 @@ export function CallInterface({ onEnd }: Props) {
       }
       return [newPane, ...kept];
     });
+    // Every new piece of evidence takes center stage. Previous pane
+    // disappears; latest wins. Works exactly like a "cycling evidence
+    // board" — whatever Harvey just talked about is what's in front
+    // of the caller. No scrim, no dim — the center IS the focus.
+    setFocusedPaneId(newPane.id);
   }, []);
 
   return (
@@ -522,24 +525,26 @@ export function CallInterface({ onEnd }: Props) {
         {/* Centered audio-reactive Bluejay pinwheel — this IS the voice.
             When Harvey expands a pane, the pinwheel shrinks + drops
             below the focused card so you can see it still spinning. */}
-        <div className="pointer-events-none fixed inset-0 flex items-center justify-center">
+        {/* Ambient bottom pinwheel — ALWAYS small, ALWAYS pinned to
+            the bottom of the screen. Used to live big in the center
+            and shrink on focus. New model: the center stage is the
+            "evidence" area for whatever Harvey just surfaced, and
+            the pinwheel is the always-on voice-presence indicator
+            below it. Pulses on speaking, stays present otherwise. */}
+        <div className="pointer-events-none fixed inset-x-0 bottom-[96px] flex items-center justify-center">
           <motion.div
-            initial={{ opacity: 0, scale: 0.82 }}
+            initial={{ opacity: 0, scale: 0.6 }}
             animate={{
-              // `ending` drives the staged fade: pinwheel shrinks +
-              // dissolves first, before the container crossfade.
               opacity: ending ? 0 : 1,
-              scale: ending ? 0.4 : focusedPaneId ? 0.26 : 1,
-              y: focusedPaneId ? 340 : 0,
+              scale: ending ? 0.4 : 0.32,
             }}
             transition={{
               opacity: ending
                 ? { duration: 0.45, ease: [0.55, 0, 1, 0.45] }
                 : { duration: 0.6, delay: 0.25 },
               scale: { duration: 0.55, ease: [0.19, 1, 0.22, 1] },
-              y: { duration: 0.55, ease: [0.19, 1, 0.22, 1] },
             }}
-            style={{ zIndex: focusedPaneId ? 55 : 1 }}
+            style={{ zIndex: 1 }}
           >
             <BluejayPinwheel
               size={320}
@@ -643,17 +648,19 @@ function FocusedPaneOverlay({
           transition={{ duration: 0.25 }}
           className="fixed inset-0 z-50 overflow-y-auto"
         >
-          {/* Scrim — kept light so the pinwheel spinning at the bottom
-              stays visible. Click closes. Lives under the card in a
-              separate z layer so scroll gestures on the card still
-              propagate to the overlay scroll container. */}
+          {/* No scrim. Center stage IS the focus by design now —
+              the pinwheel lives at the bottom, there's nothing
+              visually competing with the evidence card, and
+              dimming the background added a stagey "modal" feel we
+              don't want. A transparent click-catcher still sits
+              behind the card to dismiss on outside-click. */}
           <motion.div
             onClick={onClose}
-            className="fixed inset-0 bg-[rgba(248,246,241,0.55)]"
+            className="fixed inset-0"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
+            transition={{ duration: 0.18 }}
           />
 
           {/* Card layer. The outer flex uses items-start with top +
