@@ -1,11 +1,10 @@
 import type { NextConfig } from "next";
-import path from "node:path";
 
 const nextConfig: NextConfig = {
-  turbopack: {
-    root: path.join(__dirname),
-  },
-  // Hide the Next.js dev indicator (the "N" badge in the bottom-left).
+  // `turbopack.root` was triggering a Vercel build warning because it
+  // pointed to a local path that conflicted with the platform's
+  // `outputFileTracingRoot`. Vercel auto-detects the root correctly
+  // without it, and the setting is dev-only anyway.
   devIndicators: false,
 };
 

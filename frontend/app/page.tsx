@@ -141,7 +141,7 @@ export default function Home() {
                 connect
                 audio
                 video={false}
-                onDisconnected={handleEnd}
+                onDisconnected={() => handleEnd()}
               >
                 <CallInterface onEnd={handleEnd} />
               </LiveKitRoom>
