@@ -354,8 +354,10 @@ async def current_events(
         + urllib.parse.quote(query)
         + "&hl=en-CA&gl=CA&ceid=CA:en"
     )
+    # feedparser.parse is blocking HTTP — push it off the event loop
+    # so it doesn't stall Deepgram STT / TTS audio while it fetches.
     try:
-        feed = feedparser.parse(url)
+        feed = await asyncio.to_thread(feedparser.parse, url)
     except Exception as exc:  # pragma: no cover
         log.exception("feedparser failed: %s", exc)
         return "News lookup failed."
