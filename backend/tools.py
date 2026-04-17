@@ -608,7 +608,27 @@ async def stock_ticker(
 # Tool 4 — check_the_hill (Congressional trading disclosures)
 # ---------------------------------------------------------------------------
 
-_HILL_DATASET_PATH = pathlib.Path(__file__).resolve().parent.parent / "data" / "congress_trades.json"
+# The hill trades fallback lives in data/congress_trades.json. Resolve
+# it by trying a few candidate paths: inside the Docker image the
+# layout is /app/tools.py + /app/data/, but in local dev it's
+# backend/tools.py + data/. Environment override wins if set.
+def _resolve_hill_dataset_path() -> pathlib.Path:
+    env = os.getenv("HARVEY_HILL_DATASET")
+    if env:
+        return pathlib.Path(env)
+    here = pathlib.Path(__file__).resolve().parent
+    for candidate in (
+        here / "data" / "congress_trades.json",          # /app/data (Docker)
+        here.parent / "data" / "congress_trades.json",   # repo/data (local dev)
+        pathlib.Path("/app/data/congress_trades.json"),  # explicit container
+    ):
+        if candidate.exists():
+            return candidate
+    # Fall through — load attempt will log a warning.
+    return here.parent / "data" / "congress_trades.json"
+
+
+_HILL_DATASET_PATH = _resolve_hill_dataset_path()
 _HILL_CACHE: dict | None = None
 _QUIVER_URL = "https://api.quiverquant.com/beta/live/congresstrading"
 
@@ -653,14 +673,26 @@ def _normalize_quiver(t: dict) -> dict:
 
 
 def _fetch_quiver_trades(ticker: str) -> list[dict] | None:
-    """Try the live QuiverQuant public feed. Returns filtered trades or
-    None on any error (callers fall back to the curated dataset)."""
+    """Try the live QuiverQuant feed IF a key is configured.
+
+    QuiverQuant's /beta/live/congresstrading endpoint requires a paid
+    Bearer token. Without QUIVER_API_KEY in the environment we skip the
+    network call entirely — the bundled curated dataset is the
+    authoritative source. The function exists so a key can be dropped
+    in later without code changes.
+
+    Returns filtered trades or None on any failure.
+    """
+    api_key = os.getenv("QUIVER_API_KEY")
+    if not api_key:
+        return None
     try:
         req = urllib.request.Request(
             _QUIVER_URL,
             headers={
                 "User-Agent": "Mozilla/5.0 (HarveyHill/1.0)",
                 "Accept": "application/json",
+                "Authorization": f"Bearer {api_key}",
             },
         )
         with urllib.request.urlopen(req, timeout=6) as resp:
