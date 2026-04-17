@@ -1,5 +1,4 @@
 {
-  "_comment": "ECS Fargate task definition for the Harvey LiveKit agent. REPLACE <ACCOUNT_ID> and <REGION> throughout. Secrets are resolved at container start from AWS Secrets Manager — see DEPLOY.md for the creation commands. The agent has no inbound HTTP so we don't expose any container port.",
   "family": "harvey-agent",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
