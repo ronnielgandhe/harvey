@@ -3,7 +3,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { PhoneCall } from "lucide-react";
 import { CallCTA } from "./CallCTA";
-import { MeetHarvey } from "./MeetHarvey";
 import { PostCallReceipt } from "./PostCallReceipt";
 import type { ReceiptCounts } from "./CaseReceipt";
 
@@ -11,131 +10,108 @@ interface Props {
   onAnswer: () => void;
   loading?: boolean;
   error?: string | null;
-  /** Post-call pause state — when provided, the signature on the left
-   *  is replaced by an itemized receipt of what just happened and the
-   *  phone on the right becomes "Call again". */
+  /** Post-call pause state. When present, the phone stays centered
+   *  (as "Call again") and an itemized receipt slides in from the right.
+   *  Clicking Back on the receipt (onBack) dismisses it and leaves the
+   *  phone dead-center again. */
   postCall?: {
     durationSec: number;
     counts: ReceiptCounts;
     onConfirm: () => void;
-    /** Clears the receipt without starting a new call — returns the
-     *  signature slot to Meet Harvey. Surfaces as a small back arrow
-     *  in the top-left of the receipt. */
     onBack: () => void;
   } | null;
 }
 
 /**
- * Idle landing screen. Two-column hero:
- *   LEFT  — signed "Meet Harvey Specter"
- *   RIGHT — sonar phone CTA (nudged further right than a mirror)
+ * Idle landing screen.
  *
- * Post-call, the LEFT swaps to an itemized paper receipt and the RIGHT
- * swaps the phone icon for a "Call again" button. Both swaps crossfade
- * via AnimatePresence so the transition from call-ended → idle feels
- * like a single beat, not a white flash.
+ * One element — the phone — is the entire hero. Dead center, directly
+ * under the PSL × Bluejay header. On call-end the phone morphs into a
+ * "Call again" pill and an itemized receipt slides in from the right
+ * (the phone itself stays centered so the eye doesn't jump). Back on
+ * the receipt → phone returns to center alone.
  */
 export function IncomingCall({ onAnswer, loading, error, postCall }: Props) {
   const isPostCall = !!postCall;
 
   return (
-    <div className="relative flex min-h-screen w-full items-center justify-center">
-      <div className="grid w-full max-w-[1100px] grid-cols-1 items-center gap-16 px-10 pb-20 pt-[54vh] md:grid-cols-[1fr_1fr] md:gap-20 md:pt-[52vh]">
-        {/* LEFT — signature OR post-call receipt. `mode="popLayout"`
-            keeps exit + enter parallel so "Back" feels instant
-            (sequential mode="wait" added a ~0.4s lag). */}
-        <div className="flex md:justify-end">
-          <AnimatePresence mode="popLayout">
-            {isPostCall ? (
-              <motion.div
-                key="receipt"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.25, ease: [0.19, 1, 0.22, 1] }}
-                className="w-full max-w-[520px]"
+    <div className="relative flex min-h-screen w-full flex-col items-center justify-center">
+      {/* Centered phone / call-again — the one anchor of the hero */}
+      <div className="relative flex w-full max-w-[1100px] items-center justify-center px-6 pt-[52vh]">
+        <AnimatePresence mode="popLayout">
+          {isPostCall ? (
+            <motion.div
+              key="call-again"
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
+              className="flex flex-col items-center gap-3"
+            >
+              <button
+                type="button"
+                onClick={postCall!.onConfirm}
+                className="group relative inline-flex items-center gap-3 rounded-full bg-[var(--foreground)] px-7 py-4 font-mono text-[11px] uppercase tracking-[0.38em] text-white transition-colors hover:bg-[var(--crimson)]"
               >
-                <PostCallReceipt
-                  durationSec={postCall!.durationSec}
-                  counts={postCall!.counts}
-                  onBack={postCall!.onBack}
-                />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="signature"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-              >
-                <MeetHarvey />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+                <PhoneCall className="h-4 w-4" strokeWidth={2} />
+                Call again
+              </button>
+              <span className="font-mono text-[9px] uppercase tracking-[0.38em] text-[var(--foreground-faint)]">
+                Confirm to close the receipt
+              </span>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="sonar"
+              initial={{ opacity: 0, scale: 0.92, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{
+                duration: 0.9,
+                delay: 0.3,
+                ease: [0.22, 0.9, 0.25, 1],
+              }}
+              className="flex flex-col items-center gap-3"
+            >
+              <CallCTA
+                variant="sonar"
+                onAnswer={onAnswer}
+                loading={loading}
+                disabled={loading}
+              />
+              {error && (
+                <div className="mt-1 max-w-[320px] rounded-md border border-[var(--crimson)]/40 bg-[var(--crimson)]/[0.05] px-4 py-2 text-center font-mono text-[11px] text-[var(--crimson)]">
+                  {error}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* RIGHT — phone or "Call again" button. Nudged right with an
-            explicit inline style so there's no Tailwind arbitrary-value
-            ambiguity in the preview. */}
-        <div
-          className="flex flex-col items-center gap-3 md:items-start"
-          style={{ paddingLeft: "var(--phone-nudge, 120px)" }}
-        >
-          <AnimatePresence mode="popLayout">
-            {isPostCall ? (
-              <motion.div
-                key="call-again"
-                initial={{ opacity: 0, scale: 0.92 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.45, ease: [0.19, 1, 0.22, 1] }}
-                className="flex flex-col items-center gap-3"
-              >
-                <button
-                  type="button"
-                  onClick={postCall!.onConfirm}
-                  className="group relative inline-flex items-center gap-3 rounded-full bg-[var(--foreground)] px-7 py-4 font-mono text-[11px] uppercase tracking-[0.38em] text-white transition-colors hover:bg-[var(--crimson)]"
-                >
-                  <PhoneCall className="h-4 w-4" strokeWidth={2} />
-                  Call again
-                </button>
-                <span className="font-mono text-[9px] uppercase tracking-[0.38em] text-[var(--foreground-faint)]">
-                  Confirm to close the receipt
-                </span>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="sonar"
-                initial={{ opacity: 0, scale: 0.92, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{
-                  // Synced to the MeetHarvey instant-mode cadence on
-                  // the left: Specter line lands at ~1.25s from
-                  // remount. Phone lands at ~1.3s so both elements
-                  // settle on the same beat.
-                  duration: 1.0,
-                  delay: 0.3,
-                  ease: [0.22, 0.9, 0.25, 1],
-                }}
-                className="flex flex-col items-center gap-3"
-              >
-                <CallCTA
-                  variant="sonar"
-                  onAnswer={onAnswer}
-                  loading={loading}
-                  disabled={loading}
-                />
-                {error && (
-                  <div className="mt-1 max-w-[320px] rounded-md border border-[var(--crimson)]/40 bg-[var(--crimson)]/[0.05] px-4 py-2 text-center font-mono text-[11px] text-[var(--crimson)]">
-                    {error}
-                  </div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        {/* Receipt panel — slides in from the right during post-call.
+            Absolutely positioned so its presence / absence never shifts
+            the centered phone. On Back click (handled inside the
+            receipt) the parent clears `postCall` and this unmounts,
+            leaving the phone alone at center. */}
+        <AnimatePresence>
+          {isPostCall && (
+            <motion.div
+              key="receipt"
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 40 }}
+              transition={{ duration: 0.35, ease: [0.19, 1, 0.22, 1] }}
+              className="absolute top-[52vh] right-[4vw] w-full max-w-[460px]"
+              style={{ pointerEvents: "auto" }}
+            >
+              <PostCallReceipt
+                durationSec={postCall!.durationSec}
+                counts={postCall!.counts}
+                onBack={postCall!.onBack}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
