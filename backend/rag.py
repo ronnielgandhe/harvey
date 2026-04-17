@@ -37,10 +37,19 @@ class LegalRAG:
             embedding_function=self._embeddings,
             persist_directory=persist_dir,
         )
+        # Log the actual document count — if this is 0, the Chroma DB
+        # files didn't ship in the Docker image (or chromadb version
+        # mismatch broke schema read).
+        try:
+            doc_count = self._store._collection.count()
+        except Exception as exc:
+            doc_count = -1
+            logger.warning("could not read collection count: %s", exc)
         logger.info(
-            "LegalRAG initialized (collection=%s, persist_dir=%s)",
+            "LegalRAG initialized (collection=%s, persist_dir=%s, docs=%d)",
             collection_name,
             persist_dir,
+            doc_count,
         )
 
     def retrieve(self, query: str, k: int = 4) -> list[dict]:

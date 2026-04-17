@@ -175,16 +175,26 @@ async def cite_statute(
     # Canadian federal statute — French chunks sometimes outrank English
     # on Chroma's cosine because they share procedural vocabulary).
     try:
-        scored = rag._store.similarity_search_with_score(query, k=10)
-    except Exception:
-        scored = []
+        scored_raw = rag._store.similarity_search_with_score(query, k=10)
+    except Exception as exc:
+        log.exception("cite_statute: Chroma search failed: %s", exc)
+        scored_raw = []
+    log.info("cite_statute: Chroma returned %d raw hits", len(scored_raw))
+    if scored_raw:
+        log.info("cite_statute: best raw score=%.3f", scored_raw[0][1])
 
-    # Drop French-heavy chunks so Harvey always cites the English version.
-    scored = [(d, s) for d, s in scored if not _looks_french(d.page_content)]
+    # Drop French-heavy chunks so Harvey cites the English version. But
+    # if filtering strips EVERYTHING, fall back to the raw hits — a
+    # French citation beats a blank card.
+    scored = [(d, s) for d, s in scored_raw if not _looks_french(d.page_content)]
+    if not scored and scored_raw:
+        log.info("cite_statute: French filter stripped all hits; falling back to raw")
+        scored = scored_raw
 
-    # Confidence floor: if even the best survivor is garbage, don't
-    # fabricate a citation. Chroma L2 distance: ~0.9 ≈ 55% confidence.
-    MIN_DISTANCE = 0.9  # reject anything worse than this
+    # Confidence floor. Chroma L2 distance — loosened from 0.9 to 1.5
+    # because production embeddings score higher than local dev runs.
+    # Empty card was worse than a weak citation.
+    MIN_DISTANCE = 1.5
     if scored and scored[0][1] > MIN_DISTANCE:
         log.info("cite_statute: top score %.3f > floor %.3f — no confident match",
                  scored[0][1], MIN_DISTANCE)
