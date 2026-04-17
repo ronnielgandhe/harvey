@@ -70,8 +70,10 @@ export function CaseReceipt({
   const newsCost = counts.news * RATE.news;
   const stockCost = counts.stocks * RATE.stock;
   const hillCost = counts.hill * RATE.hill;
-  const subtotal = consultationCost + statuteCost + newsCost + stockCost + hillCost;
-  const discount = -subtotal; // "on the house"
+  const subtotal =
+    consultationCost + statuteCost + newsCost + stockCost + hillCost;
+  // 90% off — caller qualifies as a Bluejay verified member.
+  const discount = -subtotal * 0.9;
   const netDue = subtotal + discount;
 
   const caseNo = `PSL-${new Date().getFullYear()}-${Math.floor(
@@ -98,7 +100,7 @@ export function CaseReceipt({
         transition={{ duration: 0.42, ease: [0.19, 1, 0.22, 1] }}
         role="dialog"
         aria-labelledby="receipt-title"
-        className="case-receipt relative max-h-[90vh] w-full max-w-[680px] overflow-y-auto rounded-sm border border-[var(--rule-strong)] bg-[#fbf8f0] p-10 shadow-[0_30px_80px_-20px_rgba(20,18,14,0.4)]"
+        className="case-receipt relative max-h-[90vh] w-full max-w-[680px] overflow-y-auto rounded-sm border border-[var(--rule-strong)] bg-white p-10 shadow-[0_30px_80px_-20px_rgba(20,18,14,0.4)]"
       >
         {/* Dismiss X — not printed */}
         <button
@@ -216,7 +218,7 @@ export function CaseReceipt({
             </tr>
             <tr>
               <td colSpan={3} className="pt-1 text-right uppercase tracking-[0.32em] text-[9px] text-[var(--crimson)]">
-                PSL courtesy adjustment
+                Bluejay verified member discount · 90% off
               </td>
               <td className="pt-1 text-right tabular-nums text-[var(--crimson)]">
                 {fmtUsd(discount)}

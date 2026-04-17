@@ -96,7 +96,10 @@ function Sonar({ onAnswer, loading, disabled }: Omit<Props, "variant">) {
       disabled={disabled || loading}
       initial={{ opacity: 0, scale: 0.85 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.9, delay: 4.1, ease: [0.19, 1, 0.22, 1] }}
+      // Hold until the PSL × Bluejay splash finishes its glide to the
+      // center pose (~6.7s) before the phone scales in — keeps the
+      // reveal order: logos land → signature writes in → phone appears.
+      transition={{ duration: 0.9, delay: 7.0, ease: [0.19, 1, 0.22, 1] }}
       whileHover={{ scale: 1.04 }}
       whileTap={{ scale: 0.96 }}
       className="group pointer-events-auto relative flex flex-col items-center gap-4"
@@ -132,9 +135,11 @@ function Sonar({ onAnswer, loading, disabled }: Omit<Props, "variant">) {
         </div>
       </div>
 
-      <span className="font-mono text-[10px] uppercase tracking-[0.5em] text-[var(--foreground)]">
-        {loading ? "Securing line" : "Line open · pick up"}
-      </span>
+      {loading && (
+        <span className="font-mono text-[10px] uppercase tracking-[0.5em] text-[var(--foreground-muted)]">
+          Securing line
+        </span>
+      )}
     </motion.button>
   );
 }

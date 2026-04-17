@@ -1,7 +1,8 @@
 "use client";
 
 import { Canvas, useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { motion } from "framer-motion";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 interface BuildingSpec {
@@ -163,9 +164,34 @@ interface Props {
 }
 
 export function SkylineBackdrop({ dimmed = false }: Props) {
-  // NOTE: the "canyon" fade (buildings eaten away in the middle) lives
-  // as a scroll-linked overlay in page.tsx — so at rest the skyline
-  // shows unmasked and the fade only kicks in as the user scrolls.
+  // Radial reveal — the skyline is fully rendered at z=0 from mount
+  // but a page-colored overlay sits on top, punched with a growing
+  // circular hole at the PSL/Bluejay vanishing point. As the splash
+  // logos glide to center, the hole grows outward so buildings
+  // "arrive" at the viewer.
+  //
+  // We animate the circle's `r` via framer-motion (not CSS
+  // transitions on SVG attrs — those are browser-flaky) to guarantee
+  // a smooth 5-second grow. Radius is computed in pixels from the
+  // current viewport so it always clears corners regardless of size.
+  const [vpMax, setVpMax] = useState(1920);
+  useEffect(() => {
+    const update = () =>
+      setVpMax(Math.max(window.innerWidth, window.innerHeight));
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  // Signals the "go" moment — flips true 4.3s after mount (same
+  // instant PearsonHeader unlocks its splash hold). framer-motion
+  // sees the `animate.r` change and runs the 5s expo-out transition.
+  const [started, setStarted] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setStarted(true), 4300);
+    return () => clearTimeout(id);
+  }, []);
+
   return (
     <div
       aria-hidden="true"
@@ -194,6 +220,40 @@ export function SkylineBackdrop({ dimmed = false }: Props) {
         {/* Heavier fog to fade the recycle pop and add depth */}
         <fog attach="fog" args={["#FAFAF8", 60, 280]} />
       </Canvas>
+
+      {/* Reveal overlay — full-viewport bg-colored rect with a black
+          hole at center. SVG mask: the rect is drawn only where the
+          mask is white, so the growing black circle progressively
+          removes the overlay's coverage.
+          NB: SVG `fill` does NOT resolve CSS custom properties, so the
+          page background color (--background = #FAFAF8) has to be
+          hard-coded here. Keep this in sync with globals.css if it
+          ever changes. */}
+      <svg
+        aria-hidden
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <mask id="skyline-reveal-mask">
+            <rect width="100%" height="100%" fill="white" />
+            <motion.circle
+              cx="50%"
+              cy="48%"
+              fill="black"
+              initial={{ r: 0 }}
+              animate={{ r: started ? vpMax * 1.3 : 0 }}
+              transition={{ duration: 5, ease: [0.19, 1, 0.22, 1] }}
+            />
+          </mask>
+        </defs>
+        <rect
+          width="100%"
+          height="100%"
+          fill="#FAFAF8"
+          mask="url(#skyline-reveal-mask)"
+        />
+      </svg>
     </div>
   );
 }

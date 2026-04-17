@@ -3,15 +3,12 @@
 import dynamic from "next/dynamic";
 import { useCallback, useState } from "react";
 import { LiveKitRoom } from "@livekit/components-react";
-import {
-  AnimatePresence,
-  motion,
-  useScroll,
-  useTransform,
-} from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { PearsonHeader } from "@/components/PearsonHeader";
 import { IncomingCall } from "@/components/IncomingCall";
 import { CallInterface } from "@/components/CallInterface";
+import { CaseDocs } from "@/components/CaseDocs";
+import type { ReceiptCounts } from "@/components/CaseReceipt";
 
 // Heavy Three.js — load client-side only to keep initial bundle small
 const SkylineBackdrop = dynamic(
@@ -24,26 +21,27 @@ interface ConnectionDetails {
   url: string;
 }
 
+interface PostCallState {
+  durationSec: number;
+  counts: ReceiptCounts;
+}
+
 export default function Home() {
   const [conn, setConn] = useState<ConnectionDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Scroll-linked fade: the entire hero (PSL header, skyline dim, news
-  // crawl) eases out as the user scrolls into the case brief, so the
-  // brief "takes over" the page instead of fighting a fixed header.
-  const { scrollY } = useScroll();
-  // Fully visible until ~60px of scroll, fully gone by 340px.
-  const heroFade = useTransform(scrollY, [60, 340], [1, 0]);
-  // Canyon mask opacity — 0 at rest, ramps to 1 as the user scrolls.
-  // Renders a bg-colored linear gradient over the center of the skyline
-  // that effectively "eats away" the buildings in the middle, leaving
-  // the outer 450px walls intact for scale framing.
-  const canyonOpacity = useTransform(scrollY, [0, 260], [0, 1]);
+  const [docsOpen, setDocsOpen] = useState(false);
+  // Post-call "pause beat" — populated the moment the user ends a call.
+  // The idle page uses this to swap the signature for a paper receipt
+  // and the sonar phone for a "Call again" button. Cleared when they
+  // confirm by clicking Call again (which initiates a fresh call).
+  const [postCall, setPostCall] = useState<PostCallState | null>(null);
 
   const handleAnswer = useCallback(async () => {
     setLoading(true);
     setError(null);
+    // Clear any leftover post-call receipt once a new call is on the way.
+    setPostCall(null);
     try {
       const res = await fetch("/api/token", { cache: "no-store" });
       if (!res.ok) {
@@ -60,50 +58,37 @@ export default function Home() {
     }
   }, []);
 
-  const handleEnd = useCallback(() => {
-    setConn(null);
-  }, []);
+  const handleEnd = useCallback(
+    (summary?: { durationSec: number; counts: ReceiptCounts }) => {
+      if (summary) {
+        setPostCall({
+          durationSec: summary.durationSec,
+          counts: summary.counts,
+        });
+      }
+      setConn(null);
+    },
+    [],
+  );
 
   return (
     <main className="bg-background relative min-h-screen">
       {/* Ambient wireframe NYC skyline flythrough — fills the negative space */}
       <SkylineBackdrop dimmed={!!conn} />
 
-      {/* Scroll-linked canyon overlay — at rest this is invisible, so
-          the skyline shows unmasked. As the user scrolls into the brief
-          the overlay fades in, erasing the center of the skyline while
-          keeping the outer 450px solid. Emphasizes text scale without
-          crowding copy. Skipped while in call. */}
-      {!conn && (
-        <motion.div
-          aria-hidden
-          style={{
-            opacity: canyonOpacity,
-            zIndex: 1,
-            background:
-              "linear-gradient(to right, " +
-              "transparent 0, " +
-              "transparent 430px, " +
-              "var(--background) 40%, " +
-              "var(--background) 60%, " +
-              "transparent calc(100% - 430px), " +
-              "transparent 100%)",
-          }}
-          className="pointer-events-none fixed inset-0"
-        />
-      )}
-
       {/* Foreground content sits above the skyline */}
       <div className="relative" style={{ zIndex: 10 }}>
-        {/* PSL × Bluejay header. In idle mode it fades out on scroll so
-            the brief takes the page; in-call it stays pinned in the
-            corner. */}
+        {/* PSL × Bluejay header. In idle it sits in the hero slot; in
+            call it's pinned bottom-left. No scroll fade now that the
+            idle page is single-screen. */}
         {conn ? (
           <PearsonHeader variant="corner" live />
         ) : (
-          <motion.div style={{ opacity: heroFade }}>
-            <PearsonHeader variant="center" live={false} />
-          </motion.div>
+          <PearsonHeader
+            variant="center"
+            live={false}
+            onOpenDocs={() => setDocsOpen(true)}
+          />
         )}
 
         {/* LIVE MM:SS pill + OTR toggle + receipt now owned by CallInterface
@@ -124,6 +109,19 @@ export default function Home() {
                 onAnswer={handleAnswer}
                 loading={loading}
                 error={error}
+                postCall={
+                  postCall
+                    ? {
+                        durationSec: postCall.durationSec,
+                        counts: postCall.counts,
+                        // "Call again" confirms the receipt AND fires
+                        // a new call — single action, same button.
+                        onConfirm: () => {
+                          handleAnswer();
+                        },
+                      }
+                    : null
+                }
               />
             </motion.div>
           ) : (
@@ -148,6 +146,14 @@ export default function Home() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Centered dossier overlay — only available in idle. Renders
+          above everything (its own z-layer) and blurs the backdrop
+          via its own scrim, so we don't need to filter the content
+          layer here (doing so was breaking the sonar pulse). */}
+      {!conn && (
+        <CaseDocs open={docsOpen} onClose={() => setDocsOpen(false)} />
+      )}
     </main>
   );
 }

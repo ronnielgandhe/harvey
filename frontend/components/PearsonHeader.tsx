@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import { ArrowUpRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 interface Props {
@@ -9,6 +10,10 @@ interface Props {
   /** "center" = hero slot (idle); "corner" = bottom-left corner (in-call).
    *  Transitions smoothly between them via framer-motion. */
   variant?: "center" | "corner";
+  /** If provided, renders a subtle "READ DOCS" link directly beneath
+   *  the logo row — but only in the "center" (idle) pose, and only
+   *  after the boot splash has finished. Clicking calls this. */
+  onOpenDocs?: () => void;
 }
 
 // Boot sequence timings (ms) — tuned for a deliberate, cinematic pace.
@@ -20,7 +25,11 @@ interface Props {
 const INTRO_FADE = 1400;
 const SPLASH_HOLD = 4300;
 const TRAVEL_DURATION = 2400;
-const OVERLAY_FADE = 1800;
+// Shortened from 1800ms so the white splash overlay clears quickly
+// once the logos start their glide — lets the skyline reveal
+// animation (which starts at the same moment) actually be visible
+// during the glide window, not hidden under the overlay.
+const OVERLAY_FADE = 600;
 
 function fmtElapsed(s: number) {
   const m = Math.floor(s / 60);
@@ -28,7 +37,11 @@ function fmtElapsed(s: number) {
   return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
 }
 
-export function PearsonHeader({ live = false, variant = "center" }: Props) {
+export function PearsonHeader({
+  live = false,
+  variant = "center",
+  onOpenDocs,
+}: Props) {
   const [elapsed, setElapsed] = useState(0);
   // `booted` flips at the end of the SPLASH_HOLD; framer-motion then
   // animates the logos from centered-big → final resting slot.
@@ -36,6 +49,11 @@ export function PearsonHeader({ live = false, variant = "center" }: Props) {
   // `overlayGone` flips after the travel animation finishes so the white
   // overlay is removed from the DOM entirely.
   const [overlayGone, setOverlayGone] = useState(false);
+  // `initialTravelDone` flips after the FIRST splash→final glide
+  // finishes. Subsequent pose changes (e.g. corner→center when a call
+  // ends) use a much shorter duration so the page doesn't feel like
+  // it's replaying the boot each time.
+  const [initialTravelDone, setInitialTravelDone] = useState(false);
 
   // Boot kickoff — runs on every mount so the splash plays on every
   // hard-refresh while we iterate.
@@ -45,9 +63,14 @@ export function PearsonHeader({ live = false, variant = "center" }: Props) {
       () => setOverlayGone(true),
       SPLASH_HOLD + TRAVEL_DURATION + 600,
     );
+    const t3 = setTimeout(
+      () => setInitialTravelDone(true),
+      SPLASH_HOLD + TRAVEL_DURATION + 200,
+    );
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      clearTimeout(t3);
     };
   }, []);
 
@@ -136,6 +159,10 @@ export function PearsonHeader({ live = false, variant = "center" }: Props) {
       ? cornerPose
       : centerPose;
 
+  // Initial splash→final glide is slow + cinematic (2.4s). Anything
+  // AFTER that (end-of-call return, etc.) should feel snappy: 700ms.
+  const poseDurSec = initialTravelDone ? 0.7 : TRAVEL_DURATION / 1000;
+
   return (
     <>
       {/* Full-screen white overlay that hides the page during splash, then
@@ -152,7 +179,9 @@ export function PearsonHeader({ live = false, variant = "center" }: Props) {
             transition={{
               duration: OVERLAY_FADE / 1000,
               ease: [0.19, 1, 0.22, 1],
-              delay: booted ? 0.4 : 0,
+              // No delay once booted flips — clear the overlay fast
+              // so the skyline reveal is visible as the logos glide.
+              delay: 0,
             }}
           />
         )}
@@ -167,18 +196,18 @@ export function PearsonHeader({ live = false, variant = "center" }: Props) {
         initial={{ ...splashPose, scale: 1.86, opacity: 0 }}
         animate={{ ...target, opacity: 1 }}
         transition={{
-          top: { duration: TRAVEL_DURATION / 1000, ease: [0.19, 1, 0.22, 1] },
-          left: { duration: TRAVEL_DURATION / 1000, ease: [0.19, 1, 0.22, 1] },
-          bottom: { duration: TRAVEL_DURATION / 1000, ease: [0.19, 1, 0.22, 1] },
-          x: { duration: TRAVEL_DURATION / 1000, ease: [0.19, 1, 0.22, 1] },
-          y: { duration: TRAVEL_DURATION / 1000, ease: [0.19, 1, 0.22, 1] },
-          scale: { duration: TRAVEL_DURATION / 1000, ease: [0.19, 1, 0.22, 1] },
+          top: { duration: poseDurSec, ease: [0.19, 1, 0.22, 1] },
+          left: { duration: poseDurSec, ease: [0.19, 1, 0.22, 1] },
+          bottom: { duration: poseDurSec, ease: [0.19, 1, 0.22, 1] },
+          x: { duration: poseDurSec, ease: [0.19, 1, 0.22, 1] },
+          y: { duration: poseDurSec, ease: [0.19, 1, 0.22, 1] },
+          scale: { duration: poseDurSec, ease: [0.19, 1, 0.22, 1] },
           opacity: { duration: INTRO_FADE / 1000, ease: [0.22, 0.9, 0.25, 1] },
         }}
       >
         {/* Editorial "disjointed" layout — PSL floats high, Bluejay drops
             low, an oversized slash cuts diagonally between them. */}
-        <div className="pointer-events-auto -ml-5 flex items-center gap-2">
+        <div className="pointer-events-auto relative -ml-5 flex items-center gap-2">
           {/* PSL appears FIRST, alone — rises up from below while fading
               in. Expo-out curve for a filmic settle. Ends at ~2.0s. */}
           <motion.img
@@ -229,6 +258,36 @@ export function PearsonHeader({ live = false, variant = "center" }: Props) {
             style={{ translateY: 11 }}
             className="h-[64px] w-auto flex-shrink-0"
           />
+
+          {/* READ DOCS — pinned to the bottom-RIGHT edge of the logo
+              row so it sits under the Bluejay wordmark, not under PSL.
+              Absolutely positioned so it's removed from the flex row
+              and doesn't shift the logo layout. Fades in only AFTER
+              the initial splash→final glide is done, so it feels like
+              it arrives with the logos settling into place. */}
+          {onOpenDocs && variant === "center" && (
+            <motion.button
+              type="button"
+              onClick={onOpenDocs}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{
+                opacity: initialTravelDone ? 1 : 0,
+                y: initialTravelDone ? 0 : 4,
+              }}
+              transition={{
+                duration: 0.7,
+                delay: initialTravelDone ? 0.15 : 0,
+                ease: [0.19, 1, 0.22, 1],
+              }}
+              className="group pointer-events-auto absolute right-0 top-full mt-4 inline-flex items-center gap-1.5 border-b border-transparent pb-0.5 font-mono text-[10px] uppercase tracking-[0.38em] text-[var(--foreground-muted)] transition-colors hover:border-[var(--foreground)] hover:text-[var(--foreground)]"
+            >
+              Read docs
+              <ArrowUpRight
+                className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                strokeWidth={2}
+              />
+            </motion.button>
+          )}
         </div>
       </motion.div>
     </>

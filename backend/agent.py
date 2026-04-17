@@ -10,7 +10,10 @@ from __future__ import annotations
 import logging
 import os
 
+import json
+
 from dotenv import load_dotenv
+from livekit import rtc
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -86,8 +89,17 @@ async def entrypoint(ctx: JobContext) -> None:
         except Exception:
             log.info("turn_detector plugin not available; using VAD-only endpointing.")
 
+    # Deepgram: nova-2 w/ explicit interim_results. nova-3 was returning
+    # zero transcripts in livekit-agents 1.5.4 even with a healthy WS.
+    # Explicit language + smart_format to match LiveKit's known-good config.
     session = AgentSession(
-        stt=deepgram.STT(model="nova-3"),
+        stt=deepgram.STT(
+            model="nova-2",
+            language="en-US",
+            interim_results=True,
+            smart_format=True,
+            punctuate=True,
+        ),
         llm=openai.LLM(
             model="gpt-4o-mini",
             parallel_tool_calls=True,
@@ -96,7 +108,43 @@ async def entrypoint(ctx: JobContext) -> None:
         tts=elevenlabs.TTS(**tts_kwargs),
         vad=silero.VAD.load(),
         turn_detection=turn_detection,
+        aec_warmup_duration=0,
     )
+
+    # Debug: fires whenever STT produces a transcript. If this NEVER
+    # fires while the user talks, audio isn't reaching Deepgram. Kept
+    # while we debug voice; harmless to leave on.
+    @session.on("user_input_transcribed")
+    def _log_stt(ev):  # type: ignore[misc]
+        txt = getattr(ev, "transcript", None) or getattr(ev, "text", "")
+        is_final = getattr(ev, "is_final", None)
+        log.info("STT %s: %r", "final" if is_final else "interim", txt)
+
+    @session.on("agent_state_changed")
+    def _log_agent_state(ev):  # type: ignore[misc]
+        log.info("agent_state: %s", getattr(ev, "new_state", ev))
+
+    # No-mic test path. Frontend's window.__harveySendText("...") publishes
+    # {type:"debug_inject", text} on the data channel; we route it through
+    # session.generate_reply() so the full LLM → tool-call → TTS pipeline
+    # runs end-to-end. Useful when the browser/OS mic is flaky or denied.
+    @ctx.room.on("data_received")
+    def _on_data(packet: rtc.DataPacket):  # type: ignore[misc]
+        try:
+            msg = json.loads(packet.data.decode("utf-8"))
+        except Exception:
+            return
+        if msg.get("type") != "debug_inject":
+            return
+        text = str(msg.get("text") or "").strip()
+        if not text:
+            return
+        log.info("debug_inject received: %r", text)
+        try:
+            session.interrupt()
+        except Exception:
+            pass
+        session.generate_reply(user_input=text)
 
     await session.start(
         agent=HarveyAgent(),

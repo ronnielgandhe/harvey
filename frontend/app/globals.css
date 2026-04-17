@@ -15,6 +15,12 @@
   --accent-soft: rgba(139, 115, 85, 0.10);
   --accent-strong: #6B5840;
   --crimson: #9B2C2C;
+  /* Market direction — Bloomberg-ish green/red, higher-contrast than
+     --accent/--crimson so buys and sells read immediately. */
+  --positive: #1F7A3D;              /* forest green */
+  --positive-soft: rgba(31, 122, 61, 0.10);
+  --negative: #C02028;              /* bright red */
+  --negative-soft: rgba(192, 32, 40, 0.08);
 }
 
 @theme inline {
@@ -47,6 +53,14 @@ body {
   font-family: var(--font-fraunces), Georgia, serif;
   font-feature-settings: "ss01";
   letter-spacing: -0.02em;
+}
+
+/* Harvey's signed name — script display face. Use ONLY for the MEET
+   HARVEY signature on the hero, never for body copy. */
+.font-signature {
+  font-family: var(--font-signature), "Brush Script MT", cursive;
+  letter-spacing: 0;
+  font-weight: 400;
 }
 
 .eyebrow {

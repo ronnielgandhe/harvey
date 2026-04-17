@@ -528,6 +528,7 @@ async def stock_ticker(
 
 _HILL_DATASET_PATH = pathlib.Path(__file__).resolve().parent.parent / "data" / "congress_trades.json"
 _HILL_CACHE: dict | None = None
+_QUIVER_URL = "https://api.quiverquant.com/beta/live/congresstrading"
 
 
 def _load_hill_data() -> dict:
@@ -540,6 +541,60 @@ def _load_hill_data() -> dict:
             log.warning("could not load Congress trades dataset: %s", exc)
             _HILL_CACHE = {"trades": []}
     return _HILL_CACHE
+
+
+def _normalize_quiver(t: dict) -> dict:
+    """Map a QuiverQuant trade record → our `hill_intel` schema."""
+    tx = (t.get("Transaction") or "").lower()
+    if "purchase" in tx or "buy" in tx:
+        side = "buy"
+    elif "sale" in tx or "sell" in tx:
+        side = "sell"
+    else:
+        side = tx
+    chamber = t.get("House") or ""
+    if chamber.lower().startswith("senat"):
+        chamber = "Senate"
+    elif "rep" in chamber.lower():
+        chamber = "House"
+    return {
+        "ticker": (t.get("Ticker") or "").upper(),
+        "member": t.get("Representative") or "Unknown",
+        "chamber": chamber,
+        "party": (t.get("Party") or "").upper(),
+        "state": "",  # not exposed on this public endpoint
+        "side": side,
+        "size": t.get("Range") or "",
+        "filed": (t.get("ReportDate") or "")[:10],
+        "traded": (t.get("TransactionDate") or "")[:10],
+    }
+
+
+def _fetch_quiver_trades(ticker: str) -> list[dict] | None:
+    """Try the live QuiverQuant public feed. Returns filtered trades or
+    None on any error (callers fall back to the curated dataset)."""
+    try:
+        req = urllib.request.Request(
+            _QUIVER_URL,
+            headers={
+                "User-Agent": "Mozilla/5.0 (HarveyHill/1.0)",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:  # pragma: no cover
+        log.warning("quiver fetch failed: %s", exc)
+        return None
+    if not isinstance(payload, list):
+        return None
+    hits = [
+        _normalize_quiver(t)
+        for t in payload
+        if (t.get("Ticker") or "").upper() == ticker
+    ]
+    hits.sort(key=lambda t: t.get("filed", ""), reverse=True)
+    return hits[:5]
 
 
 @function_tool
@@ -569,17 +624,27 @@ async def check_the_hill(
     # is US-only, strip any exchange suffix for matching.
     lookup = ticker.split(".")[0].upper()
 
-    data = _load_hill_data()
-    all_trades = data.get("trades", [])
-    matches = [t for t in all_trades if t["ticker"].upper() == lookup]
-    matches.sort(key=lambda t: t.get("filed", ""), reverse=True)
-    matches = matches[:5]
+    # 1. Try the live QuiverQuant feed (real STOCK Act filings).
+    source = "quiver"
+    matches: list[dict] | None = await asyncio.to_thread(
+        _fetch_quiver_trades, lookup
+    )
+
+    # 2. Fall back to the curated sample if upstream is empty/unreachable.
+    if not matches:
+        source = "curated"
+        data = _load_hill_data()
+        all_trades = data.get("trades", [])
+        matches = [t for t in all_trades if t["ticker"].upper() == lookup]
+        matches.sort(key=lambda t: t.get("filed", ""), reverse=True)
+        matches = matches[:5]
 
     await _publish(ctx, {
         "type": "hill_intel",
         "payload": {
             "ticker": lookup,
             "trades": matches,
+            "source": source,
         },
     })
 

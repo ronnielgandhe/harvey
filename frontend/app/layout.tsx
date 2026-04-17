@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Fraunces, JetBrains_Mono } from "next/font/google";
+import { Inter, Fraunces, JetBrains_Mono, Mr_Dafoe } from "next/font/google";
 import "@livekit/components-styles";
 import "./globals.css";
 
@@ -23,6 +23,15 @@ const jetbrains = JetBrains_Mono({
   display: "swap",
 });
 
+// Harvey's "signed" script — used only for the MEET HARVEY signature on
+// the hero. Single weight, display-heavy, never as body copy.
+const mrDafoe = Mr_Dafoe({
+  variable: "--font-signature",
+  subsets: ["latin"],
+  weight: ["400"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Harvey — Counsel On Demand",
   description:
@@ -35,7 +44,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${fraunces.variable} ${jetbrains.variable} h-full antialiased`}
+      className={`${inter.variable} ${fraunces.variable} ${jetbrains.variable} ${mrDafoe.variable} h-full antialiased`}
     >
       <body className="min-h-full">{children}</body>
     </html>

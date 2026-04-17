@@ -112,7 +112,7 @@ export function GlassPaneStack({ panes, onDismiss, onSeeAlsoClick }: Props) {
   return (
     <>
       {/* Left stack: stock tickers + Hill intel */}
-      <div className="pointer-events-none fixed left-5 top-32 bottom-24 z-30 flex w-[260px] max-w-[85vw] flex-col gap-3">
+      <div className="pointer-events-none fixed left-5 top-32 bottom-24 z-30 flex w-[320px] max-w-[85vw] flex-col gap-3">
         <AnimatePresence initial={false}>
           {leftPanes.map((p) => (
             <motion.div
@@ -297,7 +297,7 @@ function HeaderRow({
 
 // ─── Statute card ──────────────────────────────────────────────────────────
 
-function StatutePaneCard({
+export function StatutePaneCard({
   pane,
   onDismiss,
   onSeeAlsoClick,
@@ -436,7 +436,7 @@ function StatutePaneCard({
 
 // ─── Tool pill ─────────────────────────────────────────────────────────────
 
-function ToolPill({ pane }: { pane: ToolCallPane }) {
+export function ToolPill({ pane }: { pane: ToolCallPane }) {
   const isComplete = pane.status === "complete" || pane.status === "success";
   const isError = pane.status === "error" || pane.status === "failed";
   return (
