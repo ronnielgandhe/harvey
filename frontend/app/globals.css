@@ -1,0 +1,315 @@
+@import "tailwindcss";
+
+:root {
+  /* Editorial law firm palette — Moda + Retell + Cravath */
+  --background: #FAFAF8;            /* warm off-white */
+  --background-deep: #F2F2EC;
+  --background-elev: #F5F5F0;
+  --paper: #FDFDFB;                 /* memo paper */
+  --foreground: #1a1a1a;
+  --foreground-muted: #666666;
+  --foreground-faint: #999999;
+  --rule: rgba(0, 0, 0, 0.08);
+  --rule-strong: rgba(0, 0, 0, 0.16);
+  --accent: #8B7355;                /* warm brown */
+  --accent-soft: rgba(139, 115, 85, 0.10);
+  --accent-strong: #6B5840;
+  --crimson: #9B2C2C;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-background-deep: var(--background-deep);
+  --color-background-elev: var(--background-elev);
+  --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-fraunces);
+  --font-mono: var(--font-jetbrains);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), -apple-system, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv01";
+}
+
+/* Type utilities */
+.font-display {
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-feature-settings: "ss01";
+  letter-spacing: -0.02em;
+}
+
+.eyebrow {
+  font-family: var(--font-jetbrains), monospace;
+  font-size: 11px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--foreground-muted);
+}
+
+.eyebrow-accent {
+  font-family: var(--font-jetbrains), monospace;
+  font-size: 11px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Animations
+───────────────────────────────────────────────────────────── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fade-up 0.4s ease-out both; }
+
+/* Slow pinwheel idle rotation — ~12s per revolution */
+@keyframes pinwheel-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.pinwheel-rotor { animation: pinwheel-spin 12s linear infinite; transform-origin: 50% 50%; }
+.pinwheel-rotor.fast { animation-duration: 5s; }
+
+@keyframes attention-pulse-light {
+  0%, 100% {
+    box-shadow:
+      0 4px 24px rgba(0, 0, 0, 0.06),
+      0 0 0 1px rgba(139, 115, 85, 0.16);
+  }
+  50% {
+    box-shadow:
+      0 4px 28px rgba(0, 0, 0, 0.08),
+      0 0 0 1px rgba(139, 115, 85, 0.40);
+  }
+}
+.attention-pulse { animation: attention-pulse-light 2.6s ease-in-out infinite; }
+
+@keyframes call-pulse-light {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(26, 26, 26, 0.18); }
+  50%      { box-shadow: 0 0 0 14px rgba(26, 26, 26, 0); }
+}
+.call-pulse { animation: call-pulse-light 2.4s ease-in-out infinite; }
+
+/* Custom scrollbar — light */
+.thin-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.thin-scroll::-webkit-scrollbar-track { background: transparent; }
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.10);
+  border-radius: 3px;
+}
+.thin-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.20);
+}
+
+/* LiveKit visualizer — dark bars on light bg */
+.lk-audio-bar {
+  background: var(--foreground) !important;
+  opacity: 0.75;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Buttons
+───────────────────────────────────────────────────────────── */
+.btn-primary {
+  background: var(--foreground);
+  color: var(--background);
+  font-family: var(--font-inter), sans-serif;
+  font-weight: 500;
+  font-size: 14px;
+  letter-spacing: -0.005em;
+  height: 48px;
+  padding: 0 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: background 0.2s ease, transform 0.2s ease;
+  border: none;
+  cursor: pointer;
+}
+.btn-primary:hover { background: #000; transform: translateY(-1px); }
+.btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--rule-strong);
+  font-family: var(--font-inter), sans-serif;
+  font-weight: 500;
+  font-size: 14px;
+  height: 48px;
+  padding: 0 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.btn-ghost:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: var(--foreground-muted);
+}
+
+/* Big circular call button under the pinwheel */
+.btn-call {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--foreground);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: var(--background);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+.btn-call:hover { transform: translateY(-2px); filter: brightness(0.92); }
+.btn-call:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ─────────────────────────────────────────────────────────────
+   Glass morphism — LIGHT (white-on-white, soft shadow)
+───────────────────────────────────────────────────────────── */
+.glass-pane {
+  position: relative;
+  background: rgba(255, 255, 255, 0.70);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.glass-pane:hover {
+  border-color: rgba(0, 0, 0, 0.14);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.04) 0%,
+    rgba(0, 0, 0, 0.10) 50%,
+    rgba(0, 0, 0, 0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+/* End call button — dark text, hairline border, NOT dark fill */
+.btn-end {
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--foreground);
+  border: 1px solid var(--rule-strong);
+  font-family: var(--font-jetbrains), monospace;
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  height: 40px;
+  padding: 0 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+}
+.btn-end:hover {
+  background: var(--background-elev);
+  border-color: var(--crimson);
+  color: var(--crimson);
+}
+
+/* Transcript ticker */
+.ticker-line {
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-size: 14px;
+  font-style: italic;
+  letter-spacing: -0.01em;
+  color: var(--foreground-muted);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Evidence wall slot
+───────────────────────────────────────────────────────────── */
+.evidence-slot-empty {
+  background: rgba(255, 255, 255, 0.30);
+  border: 1px dashed rgba(0, 0, 0, 0.14);
+  border-radius: 14px;
+  transition: all 0.4s ease;
+}
+.evidence-slot-empty:hover {
+  border-color: rgba(0, 0, 0, 0.22);
+}
+
+.evidence-card {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.06);
+  border-radius: 14px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Memo paper
+───────────────────────────────────────────────────────────── */
+.memo-paper {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8),
+    0 18px 60px -28px rgba(0, 0, 0, 0.18),
+    0 6px 18px rgba(0, 0, 0, 0.04);
+}
+
+.memo-rule {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    var(--accent) 8%,
+    var(--accent) 92%,
+    transparent 100%
+  );
+  opacity: 0.45;
+}
+
+.memo-section-rule {
+  height: 1px;
+  background: var(--accent);
+  opacity: 0.35;
+}
