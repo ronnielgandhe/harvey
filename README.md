@@ -297,8 +297,20 @@ Hit the Take-the-Call button. The boot sequence plays, PSL × Bluejay lands cent
 
 ## 9 · Deploy
 
-- **Frontend** → Vercel. Zero config — ships straight from the `frontend/` directory.
-- **Agent worker** → can run anywhere that speaks outbound WebSocket to LiveKit Cloud. I run it locally during the demo to keep `.env` secrets off any third-party surface; AWS ECS / Fly.io works too if you want always-on.
+Frontend on Vercel, agent on AWS ECS Fargate. LiveKit Cloud is the
+meeting point — both ends connect outbound to the same project.
+
+- **Frontend → Vercel** — `frontend/` directory, three env vars (`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `NEXT_PUBLIC_LIVEKIT_URL`), ~8 minutes.
+- **Agent → AWS ECS Fargate** — containerized via `backend/Dockerfile`, image in ECR, single Fargate task at 0.5 vCPU / 1GB, secrets from AWS Secrets Manager. No inbound HTTP — the agent connects OUT to LiveKit Cloud, so no load balancer / ALB needed. ~$8/mo at idle.
+
+**Full zoom script** with every command in order: [`deploy/DEPLOY.md`](./deploy/DEPLOY.md). Includes ECR build/push, IAM role + trust + inline policy, task definition, service creation, smoke test, redeploy flow, and tear-down.
+
+Files that make this reproducible:
+
+- `backend/Dockerfile` — Python 3.12 slim, CPU-only torch for Silero VAD, Chroma index baked into the image.
+- `.dockerignore` (repo root) — excludes the 105MB corpus PDFs (already embedded in Chroma) and the frontend.
+- `deploy/task-definition.json` — Fargate task def template, secrets resolved at container boot.
+- `deploy/trust-policy.json` + `deploy/secrets-inline-policy.json` — minimal IAM so the task can pull from ECR + read `harvey/*` secrets only.
 
 ---
 
@@ -308,7 +320,7 @@ Hit the Take-the-Call button. The boot sequence plays, PSL × Bluejay lands cent
 - **Real stock graphs** in the stock card (sparkline from the 5-day chart endpoint we already fetch).
 - **Harvey's "draft a demand letter"** as a 4th tool — writes in his voice, lands as a letterpress pane on the right.
 - **Second voice-mode toggle**: OpenAI Realtime (Marin) as a "fast mode" alternative to ElevenLabs.
-- **AWS deploy** for the agent worker so the demo URL works without my laptop being awake.
+- **Chroma on EFS / S3** — today the vector index is baked into the Docker image (`data/chroma_db`). That's fine for a 580MB corpus but at 5GB+ I'd mount EFS or fetch-on-boot from S3 so image pushes stay under a minute.
 
 ---
 

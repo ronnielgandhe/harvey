@@ -1,0 +1,36 @@
+# The build context for the agent image is the REPO ROOT so we can
+# COPY both `backend/` and `data/`. Everything else bloats the layer.
+
+# Frontend (completely separate deploy target — Vercel).
+frontend/
+.next/
+node_modules/
+
+# Python local state
+backend/.venv/
+**/__pycache__/
+**/*.pyc
+
+# Secrets — live in AWS Secrets Manager, never bake into an image.
+backend/.env
+backend/.env.*
+.env
+
+# Dev junk
+.git/
+.gitignore
+.claude/
+.DS_Store
+docs/
+README.md
+*.log
+/tmp/
+
+# Original PDFs — the Chroma index already has the embeddings. Leaving
+# corpus/ OUT of the image shaves ~105MB and the RAG never re-reads the
+# source PDFs at query time.
+data/corpus/
+
+# Scratch
+scripts/
+frontend/scripts/

@@ -1,0 +1,46 @@
+{
+  "_comment": "ECS Fargate task definition for the Harvey LiveKit agent. REPLACE <ACCOUNT_ID> and <REGION> throughout. Secrets are resolved at container start from AWS Secrets Manager — see DEPLOY.md for the creation commands. The agent has no inbound HTTP so we don't expose any container port.",
+  "family": "harvey-agent",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/harveyTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "harvey-agent",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/harvey-agent:latest",
+      "essential": true,
+      "stopTimeout": 30,
+      "environment": [
+        { "name": "HARVEY_CHROMA_DIR", "value": "/app/data/chroma_db" },
+        { "name": "HARVEY_CORPUS_DIR", "value": "/app/data/corpus" },
+        { "name": "HARVEY_COLLECTION", "value": "harvey_canadian_law" },
+        { "name": "PYTHONUNBUFFERED", "value": "1" }
+      ],
+      "secrets": [
+        { "name": "LIVEKIT_URL",          "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:harvey/LIVEKIT_URL" },
+        { "name": "LIVEKIT_API_KEY",      "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:harvey/LIVEKIT_API_KEY" },
+        { "name": "LIVEKIT_API_SECRET",   "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:harvey/LIVEKIT_API_SECRET" },
+        { "name": "OPENAI_API_KEY",       "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:harvey/OPENAI_API_KEY" },
+        { "name": "DEEPGRAM_API_KEY",     "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:harvey/DEEPGRAM_API_KEY" },
+        { "name": "ELEVENLABS_API_KEY",   "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:harvey/ELEVENLABS_API_KEY" },
+        { "name": "ELEVEN_API_KEY",       "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:harvey/ELEVENLABS_API_KEY" },
+        { "name": "ELEVENLABS_VOICE_ID",  "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:harvey/ELEVENLABS_VOICE_ID" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/harvey-agent",
+          "awslogs-region": "<REGION>",
+          "awslogs-stream-prefix": "agent",
+          "awslogs-create-group": "true"
+        }
+      }
+    }
+  ]
+}

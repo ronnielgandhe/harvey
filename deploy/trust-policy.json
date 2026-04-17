@@ -1,0 +1,11 @@
+{
+  "_comment": "Trust policy for the ECS task execution role. Lets ECS assume the role so the container can pull images from ECR and resolve Secrets Manager references at container start.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": { "Service": "ecs-tasks.amazonaws.com" },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
