@@ -34,10 +34,20 @@ interface Props {
   data: StockCardData;
   paneId: string;
   onDismiss?: (id: string) => void;
+  /** When true the fundamentals section is visible from the start.
+   *  Used by the Focused-pane overlay (Harvey voice-expands) so the
+   *  centered card shows the FULL thing, not just the chart mini.
+   *  Default false — in the side rail it collapses to save space. */
+  defaultExpanded?: boolean;
 }
 
-export function StockCardPane({ data, paneId, onDismiss }: Props) {
-  const [expanded, setExpanded] = useState(false);
+export function StockCardPane({
+  data,
+  paneId,
+  onDismiss,
+  defaultExpanded = false,
+}: Props) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
 
   if (data.error) {
     return (

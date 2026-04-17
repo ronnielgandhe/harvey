@@ -94,16 +94,35 @@ export default function Home() {
         {/* LIVE MM:SS pill + OTR toggle + receipt now owned by CallInterface
             so they can share pause state with the call timer. */}
 
-        {/* Swap the main content based on connection state, crossfading so
-            the pinwheel appearance feels like part of the same layout. */}
-        <AnimatePresence mode="wait">
+        {/* Cinematic end-call handover.
+         *
+         *  mode="wait" was causing a dead beat between exit and enter
+         *  (old UI gone, nothing on screen, then new UI pops in). The
+         *  handover felt snapped rather than staged. Dropping the mode
+         *  lets the exit and enter OVERLAP — call UI fades out while
+         *  the incoming layout is already fading up underneath, so the
+         *  skyline (backdrop) stays visibly constant and the composition
+         *  feels like a single continuous shot.
+         *
+         *  Timings: call fades out over 700ms; incoming starts fading
+         *  in at 300ms (runs 600ms), so there's a 400ms window where
+         *  both are partially visible against the buildings. The
+         *  PearsonHeader variant swap ("corner" → "center") runs in
+         *  parallel and takes 700ms, landing at ~900ms total — right
+         *  as the receipt finishes its slide.
+         */}
+        <AnimatePresence initial={false}>
           {!conn ? (
             <motion.div
               key="incoming"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.5, ease: [0.2, 0.9, 0.3, 1] }}
+              transition={{
+                duration: 0.6,
+                delay: 0.3,
+                ease: [0.2, 0.9, 0.3, 1],
+              }}
             >
               <IncomingCall
                 onAnswer={handleAnswer}
@@ -133,7 +152,19 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.6, delay: 0.25, ease: [0.2, 0.9, 0.3, 1] }}
+              transition={{
+                // Fade IN slow (0.6s + 0.25s delay) — feels like
+                // settling in. Fade OUT faster (0.7s) but with no
+                // delay so the call UI starts clearing the moment
+                // the user confirms the receipt.
+                duration: conn ? 0.6 : 0.7,
+                delay: conn ? 0.25 : 0,
+                ease: [0.2, 0.9, 0.3, 1],
+              }}
+              // pointer-events-none during exit so the fading-out
+              // call UI doesn't steal clicks from the new Call Again
+              // button appearing underneath.
+              style={{ pointerEvents: conn ? "auto" : "none" }}
             >
               <LiveKitRoom
                 token={conn.token}

@@ -166,22 +166,19 @@ async def entrypoint(ctx: JobContext) -> None:
 
 
 def prewarm(proc) -> None:
-    """Warm expensive singletons in each worker BEFORE jobs arrive.
+    """No-op prewarm.
 
-    Chroma's Rust bindings have an internal connection pool. If the pool
-    is cold-started inside a live tool call (audio + TTS + LLM all running),
-    it times out waiting for a thread and leaves the RustBindingsAPI in a
-    broken state — every subsequent cite_statute then 500s with
-    'RustBindingsAPI object has no attribute bindings'.
-    Forcing init here while the process is idle makes the first real
-    cite_statute call land on an already-warm client.
+    Previously this called get_rag() to warm Chroma before jobs arrived.
+    That was a false optimization: with 4 LiveKit workers spawning in
+    parallel, each worker's retry backoff (5 attempts × ~2s sleeps) plus
+    flock serialization exceeded the 60s initialize_process_timeout.
+    LiveKit would kill the process and respawn, creating a boot storm.
+
+    Lazy init on the first cite_statute call works fine — the flock in
+    rag.get_rag() already serializes concurrent opens. First call takes
+    ~5s cold; every subsequent call hits the cached singleton.
     """
-    try:
-        from rag import get_rag
-        get_rag()
-        log.info("prewarm: RAG ready")
-    except Exception as e:  # pragma: no cover
-        log.warning("prewarm: RAG failed to load: %s", e)
+    log.info("prewarm: skipping RAG (lazy init on first tool call)")
 
 
 def main() -> None:
@@ -195,7 +192,11 @@ def main() -> None:
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            initialize_process_timeout=60,
+            # 120s gives headroom for slow torch + silero loads on cold
+            # Fly VMs. Even without RAG prewarm, the base imports
+            # (torch, silero VAD model download, livekit plugins) can
+            # push past the 60s default on a cold machine.
+            initialize_process_timeout=120,
             num_idle_processes=1,
         )
     )

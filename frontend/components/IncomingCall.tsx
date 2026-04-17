@@ -36,20 +36,34 @@ export function IncomingCall({ onAnswer, loading, error, postCall }: Props) {
       <AnimatePresence mode="wait">
         {isPostCall ? (
           // POST-CALL: two-column layout. Receipt LEFT, Call Again RIGHT.
+          //
+          // Cinematic cascade when the receipt lands:
+          //   t=0.00s — outer container fades up (while the call UI is
+          //              still fading out over in page.tsx)
+          //   t=0.25s — receipt begins its slide-from-left
+          //   t=0.55s — "Call again" button fades in from the right
+          //   t=0.85s — subtext settles last
+          //
+          // The old timings (180ms outer, 350ms + 400ms children) were
+          // too fast: felt snapped rather than staged. These longer,
+          // staggered entries read as a single continuous gesture.
           <motion.div
             key="post-call"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            // Snappy on back → quick fade so phone re-centers instantly.
-            transition={{ duration: 0.18, ease: [0.19, 1, 0.22, 1] }}
+            transition={{ duration: 0.45, ease: [0.19, 1, 0.22, 1] }}
             className="grid w-full max-w-[1200px] grid-cols-1 items-center gap-14 px-8 pt-[52vh] md:grid-cols-[1fr_1fr] md:gap-20"
           >
             {/* LEFT — receipt */}
             <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.35, ease: [0.19, 1, 0.22, 1] }}
+              initial={{ opacity: 0, x: -48, filter: "blur(4px)" }}
+              animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+              transition={{
+                duration: 0.85,
+                delay: 0.25,
+                ease: [0.19, 1, 0.22, 1],
+              }}
               className="flex md:justify-end"
             >
               <div className="w-full max-w-[460px]">
@@ -63,9 +77,13 @@ export function IncomingCall({ onAnswer, loading, error, postCall }: Props) {
 
             {/* RIGHT — Call Again */}
             <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.4, delay: 0.05, ease: [0.19, 1, 0.22, 1] }}
+              initial={{ opacity: 0, x: 32, filter: "blur(4px)" }}
+              animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+              transition={{
+                duration: 0.75,
+                delay: 0.55,
+                ease: [0.19, 1, 0.22, 1],
+              }}
               className="flex flex-col items-center gap-3 md:items-start"
             >
               <button
@@ -76,9 +94,18 @@ export function IncomingCall({ onAnswer, loading, error, postCall }: Props) {
                 <PhoneCall className="h-4 w-4" strokeWidth={2} />
                 Call again
               </button>
-              <span className="font-mono text-[9px] uppercase tracking-[0.38em] text-[var(--foreground-faint)]">
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{
+                  duration: 0.5,
+                  delay: 0.95,
+                  ease: [0.19, 1, 0.22, 1],
+                }}
+                className="font-mono text-[9px] uppercase tracking-[0.38em] text-[var(--foreground-faint)]"
+              >
                 Confirm to close the receipt
-              </span>
+              </motion.span>
             </motion.div>
           </motion.div>
         ) : (

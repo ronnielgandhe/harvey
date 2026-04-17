@@ -10,7 +10,11 @@ primary_region = "iad"
 [env]
   HARVEY_CHROMA_DIR = "/app/data/chroma_db"
   HARVEY_CORPUS_DIR = "/app/data/corpus"
-  HARVEY_COLLECTION = "harvey_canadian_law"
+  # Local DB was ingested with the default collection name "harvey_legal".
+  # Must match what's actually on disk — otherwise Chroma opens the DB,
+  # finds no collection with the requested name, creates an empty one,
+  # and cite_statute returns 0 hits.
+  HARVEY_COLLECTION = "harvey_legal"
   PYTHONUNBUFFERED = "1"
 
 [[vm]]

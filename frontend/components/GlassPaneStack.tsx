@@ -167,7 +167,11 @@ export function GlassPaneStack({
       </div>
 
       {/* Right stack: tool pills + news + spotlight + legal (existing) */}
-      <div className="pointer-events-none fixed right-5 top-20 bottom-24 z-30 flex w-[360px] max-w-[92vw] flex-col gap-3">
+      {/* Right rail bottom raised to 240px to clear the StenoBox
+          transcript (pinned bottom-[76px] at z-40, ~160px tall).
+          Otherwise the bottom of an expanded statute card hides
+          behind the transcript. */}
+      <div className="pointer-events-none fixed right-5 top-20 bottom-[240px] z-30 flex w-[360px] max-w-[92vw] flex-col gap-3">
       {/* Tool pills row */}
       <div className="pointer-events-auto flex flex-col gap-1.5">
         <AnimatePresence>
@@ -424,28 +428,44 @@ export function StatutePaneCard({
               {pane.title}
             </h4>
           )}
-          {/* EN | FR side-by-side. Canadian federal statutes are
-              bilingual — both versions are equally official. On narrow
-              lanes the two stack vertically; on the expanded overlay
-              (wider container) they flow side-by-side. */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <blockquote className="border-l-[3px] border-[var(--foreground)] bg-[var(--background)]/40 py-1 pl-4 font-display text-[13.5px] leading-[1.55] text-[var(--foreground)]">
-              <div className="mb-1 font-mono text-[8.5px] uppercase tracking-[0.32em] text-[var(--foreground-faint)]">
-                English
+          {/* EN | FR side-by-side ONLY when French text is actually
+              present. Previously this was an always-2-col grid; when
+              the retrieved chunk was English-only (e.g. Criminal Code
+              excerpts that don't ship with their FR twin), the English
+              blockquote was cramped into the left 50% of the card and
+              the right half sat empty. Single-col fallback lets the
+              English text span the full width and breathe. */}
+          {(() => {
+            const hasFrench = Boolean(pane.frenchQuote || pane.frenchFullText);
+            const enText = expanded && pane.fullText ? pane.fullText : pane.quote;
+            const frText = expanded && pane.frenchFullText
+              ? pane.frenchFullText
+              : pane.frenchQuote ?? "";
+            return (
+              <div
+                className={
+                  hasFrench
+                    ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
+                    : "w-full"
+                }
+              >
+                <blockquote className="border-l-[3px] border-[var(--foreground)] bg-[var(--background)]/40 py-1 pl-4 font-display text-[13.5px] leading-[1.55] text-[var(--foreground)]">
+                  <div className="mb-1 font-mono text-[8.5px] uppercase tracking-[0.32em] text-[var(--foreground-faint)]">
+                    English
+                  </div>
+                  {enText}
+                </blockquote>
+                {hasFrench && (
+                  <blockquote className="border-l-[3px] border-[var(--accent)]/60 bg-[var(--accent-soft)]/30 py-1 pl-4 font-display text-[13.5px] italic leading-[1.55] text-[var(--foreground)]">
+                    <div className="mb-1 font-mono text-[8.5px] non-italic uppercase tracking-[0.32em] text-[var(--accent)]/80 not-italic">
+                      Français
+                    </div>
+                    {frText}
+                  </blockquote>
+                )}
               </div>
-              {expanded && pane.fullText ? pane.fullText : pane.quote}
-            </blockquote>
-            {(pane.frenchQuote || pane.frenchFullText) && (
-              <blockquote className="border-l-[3px] border-[var(--accent)]/60 bg-[var(--accent-soft)]/30 py-1 pl-4 font-display text-[13.5px] italic leading-[1.55] text-[var(--foreground)]">
-                <div className="mb-1 font-mono text-[8.5px] non-italic uppercase tracking-[0.32em] text-[var(--accent)]/80 not-italic">
-                  Français
-                </div>
-                {expanded && pane.frenchFullText
-                  ? pane.frenchFullText
-                  : pane.frenchQuote ?? ""}
-              </blockquote>
-            )}
-          </div>
+            );
+          })()}
 
           {/* Expand: full statute + see-also pills */}
           {hasMore && (

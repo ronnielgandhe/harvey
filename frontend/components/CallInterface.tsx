@@ -15,6 +15,7 @@ import { OffTheRecord } from "./OffTheRecord";
 import { CaseReceipt, type ReceiptCounts } from "./CaseReceipt";
 import { LiveIndicator } from "./PearsonHeader";
 import { StenoBox } from "./StenoBox";
+import { DonnaFlash } from "./DonnaFlash";
 
 interface Props {
   /** Called when the user ends the call. Carries the billing context
@@ -479,6 +480,28 @@ export function CallInterface({ onEnd }: Props) {
     [panes, focusedPaneId],
   );
 
+  // ─── Donna shout ──────────────────────────────────────────────────────
+  // Every time a new stock_card or news_ticker pane arrives, Harvey
+  // delegates to his imaginary secretary: a big "DONAAAA!" ripples
+  // across the screen. The component watches the count and fires on
+  // increments only (see DonnaFlash for the guard).
+  const secretaryTrigger = useMemo(
+    () =>
+      panes.filter(
+        (p) => p.kind === "stock_card" || p.kind === "news_ticker",
+      ).length,
+    [panes],
+  );
+  // Tag line for the overlay ("STOCKS" / "NEWS") — based on the most
+  // recently added secretary-class pane.
+  const secretaryTag = useMemo(() => {
+    for (let i = panes.length - 1; i >= 0; i--) {
+      if (panes[i].kind === "stock_card") return "STOCKS";
+      if (panes[i].kind === "news_ticker") return "NEWS";
+    }
+    return "SECRETARY";
+  }, [panes]);
+
   return (
     <div className="relative min-h-screen">
       <RoomAudioRenderer />
@@ -564,6 +587,11 @@ export function CallInterface({ onEnd }: Props) {
         onSeeAlsoClick={handleSeeAlsoClick}
         onClose={() => setFocusedPaneId(null)}
       />
+
+      {/* "DONAAAA!" secretary-shout overlay — fires on every new
+          stock or news pane. Above everything (z-60) so it visibly
+          announces that Harvey delegated. */}
+      <DonnaFlash trigger={secretaryTrigger} label="DONAAAA" tag={secretaryTag} />
     </div>
   );
 }
@@ -679,7 +707,18 @@ function FocusedPaneBody({
         <ArticleSpotlightPane data={pane.data} paneId={pane.id} onDismiss={onClose} />
       );
     case "stock_card":
-      return <StockCardPane data={pane.data} paneId={pane.id} onDismiss={onClose} />;
+      // defaultExpanded=true: in the rail a stock card is a chart
+      // mini. When Harvey voice-expands ("bring Tesla to the center"),
+      // the focus overlay is where the user wants the WHOLE thing —
+      // fundamentals, ranges, everything — visible without a click.
+      return (
+        <StockCardPane
+          data={pane.data}
+          paneId={pane.id}
+          onDismiss={onClose}
+          defaultExpanded
+        />
+      );
     case "hill_intel":
       return <HillIntelPane data={pane.data} paneId={pane.id} onDismiss={onClose} />;
     default:
