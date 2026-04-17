@@ -10,10 +10,8 @@ interface Props {
   onAnswer: () => void;
   loading?: boolean;
   error?: string | null;
-  /** Post-call pause state. When present, the phone stays centered
-   *  (as "Call again") and an itemized receipt slides in from the right.
-   *  Clicking Back on the receipt (onBack) dismisses it and leaves the
-   *  phone dead-center again. */
+  /** Post-call state: receipt on the LEFT, "Call again" on the RIGHT.
+   *  Back click clears it and the phone returns to dead-center. */
   postCall?: {
     durationSec: number;
     counts: ReceiptCounts;
@@ -25,28 +23,50 @@ interface Props {
 /**
  * Idle landing screen.
  *
- * One element — the phone — is the entire hero. Dead center, directly
- * under the PSL × Bluejay header. On call-end the phone morphs into a
- * "Call again" pill and an itemized receipt slides in from the right
- * (the phone itself stays centered so the eye doesn't jump). Back on
- * the receipt → phone returns to center alone.
+ * Two states:
+ *   IDLE      — phone dead-center, directly under PSL × Bluejay header.
+ *   POST-CALL — receipt on the left, "Call again" button on the right.
+ *               Back on the receipt = instant snap back to centered phone.
  */
 export function IncomingCall({ onAnswer, loading, error, postCall }: Props) {
   const isPostCall = !!postCall;
 
   return (
-    <div className="relative flex min-h-screen w-full flex-col items-center justify-center">
-      {/* Centered phone / call-again — the one anchor of the hero */}
-      <div className="relative flex w-full max-w-[1100px] items-center justify-center px-6 pt-[52vh]">
-        <AnimatePresence mode="popLayout">
-          {isPostCall ? (
+    <div className="relative flex min-h-screen w-full items-center justify-center">
+      <AnimatePresence mode="wait">
+        {isPostCall ? (
+          // POST-CALL: two-column layout. Receipt LEFT, Call Again RIGHT.
+          <motion.div
+            key="post-call"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            // Snappy on back → quick fade so phone re-centers instantly.
+            transition={{ duration: 0.18, ease: [0.19, 1, 0.22, 1] }}
+            className="grid w-full max-w-[1200px] grid-cols-1 items-center gap-14 px-8 pt-[52vh] md:grid-cols-[1fr_1fr] md:gap-20"
+          >
+            {/* LEFT — receipt */}
             <motion.div
-              key="call-again"
-              initial={{ opacity: 0, scale: 0.92 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
-              className="flex flex-col items-center gap-3"
+              initial={{ opacity: 0, x: -30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.35, ease: [0.19, 1, 0.22, 1] }}
+              className="flex md:justify-end"
+            >
+              <div className="w-full max-w-[460px]">
+                <PostCallReceipt
+                  durationSec={postCall!.durationSec}
+                  counts={postCall!.counts}
+                  onBack={postCall!.onBack}
+                />
+              </div>
+            </motion.div>
+
+            {/* RIGHT — Call Again */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, delay: 0.05, ease: [0.19, 1, 0.22, 1] }}
+              className="flex flex-col items-center gap-3 md:items-start"
             >
               <button
                 type="button"
@@ -60,59 +80,35 @@ export function IncomingCall({ onAnswer, loading, error, postCall }: Props) {
                 Confirm to close the receipt
               </span>
             </motion.div>
-          ) : (
-            <motion.div
-              key="sonar"
-              initial={{ opacity: 0, scale: 0.92, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{
-                duration: 0.9,
-                delay: 0.3,
-                ease: [0.22, 0.9, 0.25, 1],
-              }}
-              className="flex flex-col items-center gap-3"
-            >
-              <CallCTA
-                variant="sonar"
-                onAnswer={onAnswer}
-                loading={loading}
-                disabled={loading}
-              />
-              {error && (
-                <div className="mt-1 max-w-[320px] rounded-md border border-[var(--crimson)]/40 bg-[var(--crimson)]/[0.05] px-4 py-2 text-center font-mono text-[11px] text-[var(--crimson)]">
-                  {error}
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Receipt panel — slides in from the right during post-call.
-            Absolutely positioned so its presence / absence never shifts
-            the centered phone. On Back click (handled inside the
-            receipt) the parent clears `postCall` and this unmounts,
-            leaving the phone alone at center. */}
-        <AnimatePresence>
-          {isPostCall && (
-            <motion.div
-              key="receipt"
-              initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 40 }}
-              transition={{ duration: 0.35, ease: [0.19, 1, 0.22, 1] }}
-              className="absolute top-[52vh] right-[4vw] w-full max-w-[460px]"
-              style={{ pointerEvents: "auto" }}
-            >
-              <PostCallReceipt
-                durationSec={postCall!.durationSec}
-                counts={postCall!.counts}
-                onBack={postCall!.onBack}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+          </motion.div>
+        ) : (
+          // IDLE: phone dead-center.
+          <motion.div
+            key="idle"
+            initial={{ opacity: 0, scale: 0.92, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{
+              duration: 0.6,
+              delay: 0.15,
+              ease: [0.22, 0.9, 0.25, 1],
+            }}
+            className="flex flex-col items-center gap-3 pt-[52vh]"
+          >
+            <CallCTA
+              variant="sonar"
+              onAnswer={onAnswer}
+              loading={loading}
+              disabled={loading}
+            />
+            {error && (
+              <div className="mt-1 max-w-[320px] rounded-md border border-[var(--crimson)]/40 bg-[var(--crimson)]/[0.05] px-4 py-2 text-center font-mono text-[11px] text-[var(--crimson)]">
+                {error}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
