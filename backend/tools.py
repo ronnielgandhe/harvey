@@ -25,6 +25,7 @@ import html
 import json
 import logging
 import os
+import pathlib
 import re
 import urllib.parse
 import urllib.request
@@ -148,44 +149,96 @@ async def cite_statute(
     await _emit_tool_call(ctx, "cite_statute")
 
     rag = get_rag()
-    hits = rag.retrieve(query, k=3)
-    if not hits:
-        await _publish(ctx, {
-            "type": "statute_card",
-            "payload": {
-                "jurisdiction": "—",
-                "section": "No match",
-                "title": "No relevant passage found",
-                "quote": f"Nothing in the corpus matched: {query}",
-                "source": "",
-            },
-        })
-        return "No matching statute found."
+    # Retrieve with scores so we can publish a transparency confidence
+    # badge alongside the statute card. Falls back gracefully if the
+    # scored method isn't available on the underlying retriever.
+    try:
+        scored = rag._store.similarity_search_with_score(query, k=5)
+    except Exception:
+        scored = []
 
-    top = hits[0]
-    text = top["text"]
-    section = top.get("section") or _guess_section(text, top.get("source", ""))
-    title = top.get("title") or _guess_title(text)
-    source = os.path.basename(top.get("source") or "").replace("_", " ").replace(".pdf", "")
-    jurisdiction = top.get("jurisdiction") or (
-        "Canada" if "canada_" in (top.get("source") or "") else
-        "Ontario" if "ontario_" in (top.get("source") or "") else
+    if not scored:
+        hits = rag.retrieve(query, k=3)
+        if not hits:
+            await _publish(ctx, {
+                "type": "statute_card",
+                "payload": {
+                    "jurisdiction": "—",
+                    "section": "No match",
+                    "title": "No relevant passage found",
+                    "quote": f"Nothing in the corpus matched: {query}",
+                    "source": "",
+                    "see_also": [],
+                },
+            })
+            return "No matching statute found."
+        top_doc_dict = hits[0]
+        top_text = top_doc_dict["text"]
+        top_source = top_doc_dict.get("source", "")
+        top_section = top_doc_dict.get("section") or _guess_section(top_text, top_source)
+        top_title = top_doc_dict.get("title") or _guess_title(top_text)
+        see_also_docs = hits[1:]
+        confidence = None
+    else:
+        top_doc, top_score = scored[0]
+        top_text = top_doc.page_content
+        top_source = (top_doc.metadata or {}).get("source", "")
+        top_section = (top_doc.metadata or {}).get("section") or _guess_section(top_text, top_source)
+        top_title = (top_doc.metadata or {}).get("title") or _guess_title(top_text)
+        # Chroma returns L2 distance for cosine: 0 = identical, higher = worse.
+        # Convert to a 0..1 "confidence" — roughly 1 - distance/2.
+        confidence = max(0.0, min(1.0, 1.0 - float(top_score) / 2.0))
+        see_also_docs = [d for d, _ in scored[1:4]]
+
+    source = os.path.basename(top_source).replace("_", " ").replace(".pdf", "")
+    jurisdiction = (
+        "Canada" if "canada_" in top_source else
+        "Ontario" if "ontario_" in top_source else
         "—"
     )
+
+    see_also = []
+    for d in see_also_docs:
+        if isinstance(d, dict):
+            txt, md = d["text"], d
+        else:
+            txt = d.page_content
+            md = d.metadata or {}
+        sec = md.get("section") or _guess_section(txt, md.get("source", ""))
+        ttl = md.get("title") or _guess_title(txt)
+        src_path = md.get("source", "")
+        src = os.path.basename(src_path).replace("_", " ").replace(".pdf", "")
+        juris = (
+            "Canada" if "canada_" in src_path else
+            "Ontario" if "ontario_" in src_path else
+            "—"
+        )
+        # Include a short `quote` so the frontend can open a see-also pill
+        # as a new statute pane without another RAG round-trip.
+        see_also.append({
+            "section": sec,
+            "title": _shorten(ttl, 70),
+            "source": src,
+            "jurisdiction": juris,
+            "quote": _shorten(txt, 360),
+            "full_text": txt,
+        })
 
     await _publish(ctx, {
         "type": "statute_card",
         "payload": {
             "jurisdiction": jurisdiction,
-            "section": section,
-            "title": _shorten(title, 90),
-            "quote": _shorten(text, 360),
+            "section": top_section,
+            "title": _shorten(top_title, 90),
+            "quote": _shorten(top_text, 360),
+            "full_text": top_text,
             "source": source,
+            "confidence": confidence,
+            "see_also": see_also[:3],
         },
     })
 
-    # Short summary fed back to the LLM — so Harvey can verbalize it.
-    return f"{jurisdiction} {section}: {_shorten(text, 220)}"
+    return f"{jurisdiction} {top_section}: {_shorten(top_text, 220)}"
 
 
 # ---------------------------------------------------------------------------
@@ -317,20 +370,30 @@ _COMPANY_TO_TICKER: dict[str, str] = {
 
 
 def _resolve_ticker(raw: str) -> str | None:
-    """Best-effort: map a user string to a Yahoo Finance ticker."""
+    """Best-effort: map a user string to a Yahoo Finance ticker.
+
+    Order matters: company-name dictionary is checked BEFORE the
+    uppercase-ticker regex, otherwise words like "NVIDIA", "TESLA",
+    "AMAZON" would pass the regex and be sent to Yahoo as-is (404).
+    """
     s = raw.strip().lower()
     if not s:
         return None
-    # Direct ticker form — ALL CAPS, optionally with exchange suffix
-    m = re.match(r"^[A-Z]{1,6}(\.[A-Z]{1,4})?$", raw.strip())
-    if m:
-        return raw.strip()
-    # Company name lookup
+    # 1. Exact company-name hit ("apple", "nvidia", "royal bank")
+    if s in _COMPANY_TO_TICKER:
+        return _COMPANY_TO_TICKER[s]
+    # 2. Substring company match ("shares of Tesla", "Apple Inc.")
     for name, ticker in _COMPANY_TO_TICKER.items():
         if name in s:
             return ticker
-    # Fallback: if short and alphanumeric, assume ticker
-    if re.match(r"^[A-Za-z]{1,6}$", raw.strip()):
+    # 3. Direct ticker form — ALL CAPS, 1-5 chars, optional .TO / .V etc.
+    #    Capped at 5 so "NVIDIA" (6) falls through to the dict above on
+    #    retry, and real tickers like GOOGL (5), AAPL (4) still match.
+    m = re.match(r"^[A-Z]{1,5}(\.[A-Z]{1,4})?$", raw.strip())
+    if m:
+        return raw.strip()
+    # 4. Last resort: short alphanumeric → uppercase ticker guess
+    if re.match(r"^[A-Za-z]{2,5}$", raw.strip()):
         return raw.strip().upper()
     return None
 
@@ -338,10 +401,12 @@ def _resolve_ticker(raw: str) -> str | None:
 def _fetch_yahoo_quote(ticker: str) -> dict[str, Any] | None:
     """Sync HTTP call to Yahoo Finance's public chart endpoint. Returns
     a flat dict of the most useful fields, or None on failure."""
+    # 1-month daily chart: ~22 points — smooth curve that shows real trend
+    # direction, and still works on weekends / holidays (unlike intraday).
     url = (
         "https://query1.finance.yahoo.com/v8/finance/chart/"
         + urllib.parse.quote(ticker)
-        + "?interval=1d&range=5d"
+        + "?interval=1d&range=1mo"
     )
     req = urllib.request.Request(
         url,
@@ -363,6 +428,16 @@ def _fetch_yahoo_quote(ticker: str) -> dict[str, Any] | None:
             return None
         change = price - prev
         change_pct = (change / prev) * 100 if prev else 0
+
+        # Extract the 5-day close series for the expanded sparkline.
+        closes: list[float] = []
+        try:
+            quote = result.get("indicators", {}).get("quote", [{}])[0]
+            raw_closes = quote.get("close", []) or []
+            closes = [round(float(c), 2) for c in raw_closes if c is not None]
+        except (KeyError, IndexError, TypeError, ValueError):
+            closes = []
+
         return {
             "symbol": meta.get("symbol", ticker),
             "shortName": meta.get("shortName") or meta.get("longName") or ticker,
@@ -376,6 +451,7 @@ def _fetch_yahoo_quote(ticker: str) -> dict[str, Any] | None:
             "fiftyTwoWeekHigh": meta.get("fiftyTwoWeekHigh"),
             "fiftyTwoWeekLow": meta.get("fiftyTwoWeekLow"),
             "exchange": meta.get("exchangeName") or meta.get("fullExchangeName", ""),
+            "closes": closes,
         }
     except (KeyError, IndexError, TypeError) as exc:
         log.warning("Parse error for %s: %s", ticker, exc)
@@ -446,4 +522,78 @@ async def stock_ticker(
 # Tool registry — imported by agent.py
 # ---------------------------------------------------------------------------
 
-ALL_TOOLS = [cite_statute, current_events, stock_ticker]
+# ---------------------------------------------------------------------------
+# Tool 4 — check_the_hill (Congressional trading disclosures)
+# ---------------------------------------------------------------------------
+
+_HILL_DATASET_PATH = pathlib.Path(__file__).resolve().parent.parent / "data" / "congress_trades.json"
+_HILL_CACHE: dict | None = None
+
+
+def _load_hill_data() -> dict:
+    global _HILL_CACHE
+    if _HILL_CACHE is None:
+        try:
+            with _HILL_DATASET_PATH.open("r", encoding="utf-8") as f:
+                _HILL_CACHE = json.load(f)
+        except Exception as exc:  # pragma: no cover
+            log.warning("could not load Congress trades dataset: %s", exc)
+            _HILL_CACHE = {"trades": []}
+    return _HILL_CACHE
+
+
+@function_tool
+async def check_the_hill(
+    ctx: RunContext,
+    ticker_or_company: str,
+) -> str:
+    """Pull recent US Congressional trading disclosures for a ticker.
+    Use this WHENEVER a public company is mentioned — pairs with
+    stock_ticker to show that "Harvey has sources on the Hill." Returns
+    recent buys / sells from House + Senate members filed under the
+    STOCK Act. Delivery should be dry and implicating:
+    "Two senators bought last week. Make of that what you will."
+
+    Args:
+        ticker_or_company: Company name or ticker. E.g. "Apple", "AAPL",
+            "Nvidia", "Palantir", "PLTR". Case-insensitive.
+    """
+    log.info("check_the_hill(query=%r)", ticker_or_company)
+    await _emit_tool_call(ctx, "check_the_hill")
+
+    ticker = _resolve_ticker(ticker_or_company)
+    if not ticker:
+        ticker = ticker_or_company.upper()
+
+    # Yahoo tickers sometimes have suffixes (e.g. SHOP.TO); Congress data
+    # is US-only, strip any exchange suffix for matching.
+    lookup = ticker.split(".")[0].upper()
+
+    data = _load_hill_data()
+    all_trades = data.get("trades", [])
+    matches = [t for t in all_trades if t["ticker"].upper() == lookup]
+    matches.sort(key=lambda t: t.get("filed", ""), reverse=True)
+    matches = matches[:5]
+
+    await _publish(ctx, {
+        "type": "hill_intel",
+        "payload": {
+            "ticker": lookup,
+            "trades": matches,
+        },
+    })
+
+    if not matches:
+        return f"No recent Congressional filings on {lookup}."
+
+    # One-line summary per match for the LLM to verbalize
+    bullets = []
+    for t in matches[:3]:
+        bullets.append(
+            f"{t['member']} ({t['party']}-{t['state']}, {t['chamber']}): "
+            f"{t['side'].upper()} {t['size']} on {t['traded']}"
+        )
+    return f"Hill intel on {lookup}:\n" + "\n".join(bullets)
+
+
+ALL_TOOLS = [cite_statute, current_events, stock_ticker, check_the_hill]

@@ -1,7 +1,9 @@
 "use client";
 
+import { motion, useScroll, useTransform } from "framer-motion";
 import { CallCTA } from "./CallCTA";
-import { CaseBrief, ScrollCue } from "./CaseBrief";
+import { CaseBrief } from "./CaseBrief";
+import { NewsCrawl } from "./NewsCrawl";
 
 interface Props {
   onAnswer: () => void;
@@ -10,12 +12,21 @@ interface Props {
 }
 
 export function IncomingCall({ onAnswer, loading, error }: Props) {
+  // Hero CTA (phone + "LINE OPEN · PICK UP") fades as the user scrolls
+  // into the brief, on the same scroll range as the PSL header + skyline
+  // mask, so everything clears together.
+  const { scrollY } = useScroll();
+  const ctaFade = useTransform(scrollY, [60, 260], [1, 0]);
+
   return (
     <div className="relative flex min-h-screen flex-col items-center px-6">
       {/* Hero section — fills the viewport. Call button sits below the
           centered PSL × Bluejay header (positioned via PearsonHeader). */}
       <div className="relative flex min-h-screen w-full flex-col items-center">
-        <div className="flex flex-col items-center gap-6 pt-[62vh]">
+        <motion.div
+          style={{ opacity: ctaFade }}
+          className="flex flex-col items-center gap-6 pt-[62vh]"
+        >
           <CallCTA
             variant="sonar"
             onAnswer={onAnswer}
@@ -28,14 +39,17 @@ export function IncomingCall({ onAnswer, loading, error }: Props) {
               {error}
             </div>
           )}
-        </div>
-
-        {/* Scroll cue — invites the viewer to read the brief below */}
-        <ScrollCue />
+        </motion.div>
       </div>
 
-      {/* Case brief — appears on scroll, shows tech + features + credits */}
-      <CaseBrief />
+      {/* Case brief — fades up into view as the hero clears. Bottom
+          padding leaves room for the NewsCrawl before it fades out. */}
+      <div className="pb-16">
+        <CaseBrief />
+      </div>
+
+      {/* Pre-roll newswire crawl — fades out with the rest of the hero */}
+      <NewsCrawl />
     </div>
   );
 }

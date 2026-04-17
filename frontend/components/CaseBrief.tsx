@@ -1,15 +1,15 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useScroll, useTransform } from "framer-motion";
 import {
   BookOpen,
-  ChevronDown,
   ExternalLink,
   Mic,
   Newspaper,
   Scroll,
   TrendingUp,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * A "case brief" section that lives BELOW the hero on the idle landing
@@ -63,12 +63,91 @@ const PIPELINE = [
   { step: "Transport", tool: "LiveKit Cloud · WebRTC" },
 ];
 
+interface Headline {
+  title: string;
+  source?: string;
+  link?: string;
+}
+
+function useLatestHeadline(): Headline | null {
+  const [h, setH] = useState<Headline | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/headline", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data || !data.title) return;
+        setH({ title: data.title, source: data.source, link: data.link });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return h;
+}
+
 export function CaseBrief() {
+  const headline = useLatestHeadline();
+  const sectionRef = useRef<HTMLElement>(null);
+
+  // Scroll-linked entrance — the brief's top edge fades its mask from
+  // page-bg → transparent as you scroll it into view. Creates a smooth
+  // "emerge out of the hero" feel in place of a chevron cue.
+  const { scrollYProgress } = useScroll({
+    target: sectionRef,
+    offset: ["start end", "start center"],
+  });
+  const maskOpacity = useTransform(scrollYProgress, [0, 1], [1, 0]);
+
   return (
-    <section
+    <motion.section
+      ref={sectionRef}
       aria-label="Case brief"
+      initial={{ opacity: 0, y: 36 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.15 }}
+      transition={{ duration: 0.9, ease: [0.19, 1, 0.22, 1] }}
       className="relative z-10 mx-auto w-full max-w-[920px] px-6 pt-24 pb-20"
     >
+      {/* Soft bg-to-transparent mask at the top edge — fades out as user
+          scrolls into the brief, giving the "reveal from the hero" look. */}
+      <motion.div
+        aria-hidden
+        style={{ opacity: maskOpacity }}
+        className="pointer-events-none absolute inset-x-0 -top-40 z-10 h-56 bg-gradient-to-b from-[var(--background)] via-[var(--background)]/85 to-transparent"
+      />
+
+      {/* "Today at PSL" live headline pill */}
+      {headline && (
+        <motion.a
+          href={headline.link || "#"}
+          target="_blank"
+          rel="noopener noreferrer"
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="group mb-10 inline-flex max-w-full items-center gap-3 rounded-full border border-[var(--rule-strong)] bg-white/70 px-4 py-2 transition-colors hover:border-[var(--foreground)]"
+        >
+          <span className="flex items-center gap-1.5">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--crimson)]/70" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--crimson)]" />
+            </span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.42em] text-[var(--foreground-faint)]">
+              Today at PSL
+            </span>
+          </span>
+          <span className="truncate font-display text-[13px] italic text-[var(--foreground)] group-hover:underline">
+            {headline.title}
+          </span>
+          <ExternalLink
+            className="h-3 w-3 shrink-0 text-[var(--foreground-faint)] opacity-0 transition-opacity group-hover:opacity-100"
+            strokeWidth={2}
+          />
+        </motion.a>
+      )}
+
       {/* 01 — the matter */}
       <Numbered number="01" label="The matter">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -206,7 +285,7 @@ export function CaseBrief() {
           View the repository
         </a>
       </div>
-    </section>
+    </motion.section>
   );
 }
 
@@ -222,43 +301,33 @@ function Numbered({
   children: React.ReactNode;
 }) {
   return (
-    <div className="relative mt-20 first:mt-0">
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.25 }}
+      transition={{ duration: 0.75, ease: [0.19, 1, 0.22, 1] }}
+      className="relative mt-20 first:mt-0"
+    >
       <div className="mb-6 flex items-center gap-4">
         <span className="font-mono text-[11px] uppercase tracking-[0.32em] text-[var(--foreground-faint)]">
           {number}
         </span>
-        <span className="h-px flex-1 bg-[var(--rule-strong)]" />
+        <motion.span
+          initial={{ scaleX: 0 }}
+          whileInView={{ scaleX: 1 }}
+          viewport={{ once: true, amount: 0.25 }}
+          transition={{ duration: 0.9, delay: 0.1, ease: [0.19, 1, 0.22, 1] }}
+          className="h-px flex-1 origin-left bg-[var(--rule-strong)]"
+        />
         <span className="font-mono text-[10px] uppercase tracking-[0.42em] text-[var(--foreground-muted)]">
           {label}
         </span>
       </div>
       {children}
-    </div>
-  );
-}
-
-// ─── Scroll cue: sits between the hero and the brief, invites scroll ────
-
-export function ScrollCue() {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.8, delay: 5.0 }}
-      className="pointer-events-none absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
-    >
-      <span className="font-mono text-[9px] uppercase tracking-[0.42em] text-[var(--foreground-faint)]">
-        Read the brief
-      </span>
-      <motion.div
-        animate={{ y: [0, 5, 0] }}
-        transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-      >
-        <ChevronDown
-          className="h-4 w-4 text-[var(--foreground-muted)]"
-          strokeWidth={1.5}
-        />
-      </motion.div>
     </motion.div>
   );
 }
+
+// ScrollCue removed — the CaseBrief now fades + rises into view with a
+// masked gradient entrance. No chevron was getting covered by the
+// NewsCrawl bar anyway.

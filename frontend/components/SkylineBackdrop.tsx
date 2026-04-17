@@ -163,6 +163,9 @@ interface Props {
 }
 
 export function SkylineBackdrop({ dimmed = false }: Props) {
+  // NOTE: the "canyon" fade (buildings eaten away in the middle) lives
+  // as a scroll-linked overlay in page.tsx — so at rest the skyline
+  // shows unmasked and the fade only kicks in as the user scrolls.
   return (
     <div
       aria-hidden="true"

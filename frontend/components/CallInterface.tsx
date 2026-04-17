@@ -12,7 +12,10 @@ import {
 import { Ear, Loader2, MessageSquare, PhoneOff } from "lucide-react";
 import { LocalAudioTrack, Track } from "livekit-client";
 import { BluejayPinwheel } from "./BluejayPinwheel";
-import { GlassPaneStack, type Pane } from "./GlassPaneStack";
+import { GlassPaneStack, type Pane, type SeeAlsoItem } from "./GlassPaneStack";
+import { OffTheRecord } from "./OffTheRecord";
+import { CaseReceipt, type ReceiptCounts } from "./CaseReceipt";
+import { LiveIndicator } from "./PearsonHeader";
 
 interface Props {
   onEnd: () => void;
@@ -78,9 +81,52 @@ function useTranscriptionsSafe() {
 
 export function CallInterface({ onEnd }: Props) {
   const [panes, setPanes] = useState<Pane[]>([]);
+  const [counts, setCounts] = useState<ReceiptCounts>({
+    statutes: 0,
+    news: 0,
+    stocks: 0,
+    hill: 0,
+  });
+  const [otr, setOtr] = useState(false);
+  const [receiptOpen, setReceiptOpen] = useState(false);
   const micBands = useLocalMicBands();
   const { state: vaState } = useVoiceAssistant();
   const { agent, user } = useTranscriptionsSafe();
+
+  // ─── Call timer with pause support ────────────────────────────────────
+  // `startTime` fixed at mount, `pausedMs` accumulates while OTR active.
+  // Ticks once per second to force re-render of the LiveIndicator.
+  const [startTime] = useState(() => Date.now());
+  const [pausedMs, setPausedMs] = useState(0);
+  const [pauseStartedAt, setPauseStartedAt] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const toggleOtr = useCallback(() => {
+    setOtr((prev) => {
+      if (prev) {
+        // Resuming — fold the paused interval into total paused time.
+        setPausedMs((pm) =>
+          pauseStartedAt !== null ? pm + (Date.now() - pauseStartedAt) : pm,
+        );
+        setPauseStartedAt(null);
+        return false;
+      } else {
+        setPauseStartedAt(Date.now());
+        return true;
+      }
+    });
+  }, [pauseStartedAt]);
+
+  const elapsedSec = useMemo(() => {
+    const effective =
+      otr && pauseStartedAt !== null ? pauseStartedAt : nowMs;
+    return Math.max(0, Math.floor((effective - startTime - pausedMs) / 1000));
+  }, [nowMs, otr, pauseStartedAt, pausedMs, startTime]);
 
   // Single source of truth for the HUD label — one tile that swaps
   // content based on voice-assistant state. No separate activity feed.
@@ -130,6 +176,20 @@ export function CallInterface({ onEnd }: Props) {
 
     if (type === "statute_card") {
       const id = (payload.id as string) || uid("statute");
+      const seeAlsoRaw = Array.isArray(payload.see_also)
+        ? (payload.see_also as unknown[])
+        : [];
+      const seeAlso: SeeAlsoItem[] = seeAlsoRaw.map((raw) => {
+        const o = raw as Record<string, unknown>;
+        return {
+          section: String(o.section ?? ""),
+          title: String(o.title ?? ""),
+          source: String(o.source ?? ""),
+          jurisdiction: o.jurisdiction ? String(o.jurisdiction) : undefined,
+          quote: o.quote ? String(o.quote) : undefined,
+          fullText: o.full_text ? String(o.full_text) : undefined,
+        };
+      });
       setPanes((prev) =>
         prev.find((p) => p.id === id)
           ? prev
@@ -141,10 +201,49 @@ export function CallInterface({ onEnd }: Props) {
                 section: String(payload.section ?? ""),
                 title: String(payload.title ?? ""),
                 quote: String(payload.quote ?? ""),
+                fullText: payload.full_text
+                  ? String(payload.full_text)
+                  : undefined,
+                confidence:
+                  typeof payload.confidence === "number"
+                    ? payload.confidence
+                    : undefined,
+                seeAlso,
               },
               ...prev,
             ],
       );
+      setCounts((c) => ({ ...c, statutes: c.statutes + 1 }));
+    } else if (type === "hill_intel") {
+      const tradesRaw = Array.isArray(payload.trades)
+        ? (payload.trades as unknown[])
+        : [];
+      const trades = tradesRaw.map((raw) => {
+        const o = raw as Record<string, unknown>;
+        return {
+          ticker: String(o.ticker ?? ""),
+          member: String(o.member ?? ""),
+          chamber: String(o.chamber ?? ""),
+          party: String(o.party ?? ""),
+          state: String(o.state ?? ""),
+          side: String(o.side ?? ""),
+          size: String(o.size ?? ""),
+          filed: String(o.filed ?? ""),
+          traded: String(o.traded ?? ""),
+        };
+      });
+      setPanes((prev) => [
+        {
+          kind: "hill_intel",
+          id: uid("hill"),
+          data: {
+            ticker: String(payload.ticker ?? ""),
+            trades,
+          },
+        },
+        ...prev,
+      ]);
+      setCounts((c) => ({ ...c, hill: c.hill + 1 }));
     } else if (type === "article_spotlight") {
       setPanes((prev) => [
         {
@@ -195,12 +294,18 @@ export function CallInterface({ onEnd }: Props) {
                 ? payload.fiftyTwoWeekLow
                 : undefined,
             exchange: payload.exchange ? String(payload.exchange) : undefined,
+            closes: Array.isArray(payload.closes)
+              ? (payload.closes as unknown[])
+                  .map((n) => (typeof n === "number" ? n : Number(n)))
+                  .filter((n) => Number.isFinite(n))
+              : undefined,
             error: payload.error ? String(payload.error) : undefined,
             message: payload.message ? String(payload.message) : undefined,
           },
         },
         ...prev,
       ]);
+      setCounts((c) => ({ ...c, stocks: c.stocks + 1 }));
     } else if (type === "news_ticker") {
       const rawItems = Array.isArray(payload.items) ? (payload.items as unknown[]) : [];
       const items = rawItems.map((raw) => {
@@ -228,6 +333,7 @@ export function CallInterface({ onEnd }: Props) {
         },
         ...prev,
       ]);
+      setCounts((c) => ({ ...c, news: c.news + 1 }));
     } else if (type === "tool_call") {
       const id = uid("tool");
       const status = String(payload.status ?? "running");
@@ -249,59 +355,114 @@ export function CallInterface({ onEnd }: Props) {
     setPanes((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
-  // ESC ends call
+  // See-also pill click → prepend a new statute pane from the cached
+  // excerpt on the pill itself (no extra RAG round-trip). Delivers the
+  // instant "follow the citation trail" feel.
+  const handleSeeAlsoClick = useCallback((item: SeeAlsoItem) => {
+    const id = uid("statute-see");
+    setPanes((prev) => [
+      {
+        kind: "statute",
+        id,
+        jurisdiction: item.jurisdiction ?? "",
+        section: item.section,
+        title: item.title,
+        quote: item.quote ?? item.title,
+        fullText: item.fullText,
+        confidence: undefined,
+        seeAlso: [],
+      },
+      ...prev,
+    ]);
+    setCounts((c) => ({ ...c, statutes: c.statutes + 1 }));
+  }, []);
+
+  // End-call is intercepted — open the receipt first, then confirm.
+  const handleEndClick = useCallback(() => {
+    setReceiptOpen(true);
+  }, []);
+  const handleReceiptConfirm = useCallback(() => {
+    setReceiptOpen(false);
+    onEnd();
+  }, [onEnd]);
+  const handleReceiptCancel = useCallback(() => setReceiptOpen(false), []);
+
+  // ESC: close receipt if open, otherwise open it.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onEnd();
+      if (e.key === "Escape") {
+        if (receiptOpen) setReceiptOpen(false);
+        else setReceiptOpen(true);
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onEnd]);
+  }, [receiptOpen]);
 
   return (
     <div className="relative min-h-screen">
       <RoomAudioRenderer />
 
-      {/* Centered audio-reactive Bluejay pinwheel — this IS the voice. */}
-      <div className="pointer-events-none fixed inset-0 flex items-center justify-center">
+      {/* Dimming wrapper — OTR active = desaturated. The OTR overlay,
+          receipt, and LiveIndicator sit OUTSIDE this so they stay crisp. */}
+      <div className={otr ? "otr-dim" : ""}>
+        {/* Centered audio-reactive Bluejay pinwheel — this IS the voice. */}
+        <div className="pointer-events-none fixed inset-0 flex items-center justify-center">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.82 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.9, delay: 0.25, ease: [0.19, 1, 0.22, 1] }}
+          >
+            <BluejayPinwheel
+              size={320}
+              micBands={micBands}
+              pulse={vaState === "speaking"}
+            />
+          </motion.div>
+        </div>
+
+        {/* Single status HUD above the pinwheel */}
+        <StatusHUD state={vaState} label={statusLabel} />
+
+        {/* Right-side supplementary panes */}
+        <GlassPaneStack
+          panes={panes}
+          onDismiss={handleDismiss}
+          onSeeAlsoClick={handleSeeAlsoClick}
+        />
+
+        {/* Live transcript ticker */}
+        <TickerLine ticker={ticker} />
+
+        {/* End call button — bottom center */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.82 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.9, delay: 0.25, ease: [0.19, 1, 0.22, 1] }}
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.6 }}
+          className="fixed bottom-7 left-1/2 z-30 -translate-x-1/2"
         >
-          <BluejayPinwheel
-            size={320}
-            micBands={micBands}
-            pulse={vaState === "speaking"}
-          />
+          <button onClick={handleEndClick} className="btn-end">
+            <PhoneOff className="h-3.5 w-3.5" strokeWidth={2} />
+            End Call
+          </button>
         </motion.div>
       </div>
 
-      {/* Single status HUD above the pinwheel — swaps label as
-          voice-assistant state changes (Connecting → Harvey listening
-          → Consulting the bench → Harvey speaking). */}
-      <StatusHUD state={vaState} label={statusLabel} />
+      {/* LIVE MM:SS pill — pause-aware, driven by CallInterface timer */}
+      <LiveIndicator elapsedSec={elapsedSec} paused={otr} />
 
-      {/* Right-side supplementary panes (statute citations, news ticker) */}
-      <GlassPaneStack panes={panes} onDismiss={handleDismiss} />
+      {/* Off-the-record toggle + full-screen stamp overlay. Rendered
+          OUTSIDE otr-dim so the toggle and stamp stay full-contrast. */}
+      <OffTheRecord active={otr} onToggle={toggleOtr} />
 
-      {/* Live transcript ticker — the last line of dialog, centered below
-          the pinwheel. Fulfills the spec requirement for a live transcript
-          without cluttering the minimal layout. */}
-      <TickerLine ticker={ticker} />
-
-      {/* End call button — bottom center */}
-      <motion.div
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.6 }}
-        className="fixed bottom-7 left-1/2 z-30 -translate-x-1/2"
-      >
-        <button onClick={onEnd} className="btn-end">
-          <PhoneOff className="h-3.5 w-3.5" strokeWidth={2} />
-          End Call
-        </button>
-      </motion.div>
+      {/* Case receipt overlay — intercepts end-call */}
+      <CaseReceipt
+        open={receiptOpen}
+        onCancel={handleReceiptCancel}
+        onConfirm={handleReceiptConfirm}
+        durationSec={elapsedSec}
+        counts={counts}
+      />
     </div>
   );
 }

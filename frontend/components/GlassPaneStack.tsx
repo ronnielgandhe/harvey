@@ -19,6 +19,7 @@ import {
   type ArticleSpotlightData,
 } from "./panes/ArticleSpotlightPane";
 import { StockCardPane, type StockCardData } from "./panes/StockCardPane";
+import { HillIntelPane, type HillIntelData } from "./panes/HillIntelPane";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pane types
@@ -29,7 +30,17 @@ export type Pane =
   | ToolCallPane
   | NewsTickerPaneType
   | ArticleSpotlightPaneType
-  | StockCardPaneType;
+  | StockCardPaneType
+  | HillIntelPaneType;
+
+export interface SeeAlsoItem {
+  section: string;
+  title: string;
+  source: string;
+  jurisdiction?: string;
+  quote?: string;
+  fullText?: string;
+}
 
 export interface StatutePane {
   kind: "statute";
@@ -38,6 +49,9 @@ export interface StatutePane {
   section: string;
   title: string;
   quote: string;
+  fullText?: string;
+  confidence?: number;
+  seeAlso?: SeeAlsoItem[];
 }
 
 export interface ToolCallPane {
@@ -65,6 +79,12 @@ export interface StockCardPaneType {
   data: StockCardData;
 }
 
+export interface HillIntelPaneType {
+  kind: "hill_intel";
+  id: string;
+  data: HillIntelData;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Container
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,23 +92,29 @@ export interface StockCardPaneType {
 interface Props {
   panes: Pane[];
   onDismiss?: (id: string) => void;
+  onSeeAlsoClick?: (item: SeeAlsoItem) => void;
 }
 
-export function GlassPaneStack({ panes, onDismiss }: Props) {
+export function GlassPaneStack({ panes, onDismiss, onSeeAlsoClick }: Props) {
   const toolCalls = panes.filter((p): p is ToolCallPane => p.kind === "tool_call");
   const cards = panes.filter(
-    (p) => p.kind !== "tool_call" && p.kind !== "stock_card",
+    (p) =>
+      p.kind !== "tool_call" &&
+      p.kind !== "stock_card" &&
+      p.kind !== "hill_intel",
   );
-  const stocks = panes.filter(
-    (p): p is StockCardPaneType => p.kind === "stock_card",
+  // LEFT stack: market / insider lane (stock + Congress trades)
+  const leftPanes = panes.filter(
+    (p): p is StockCardPaneType | HillIntelPaneType =>
+      p.kind === "stock_card" || p.kind === "hill_intel",
   );
 
   return (
     <>
-      {/* Left stack: stock tickers */}
+      {/* Left stack: stock tickers + Hill intel */}
       <div className="pointer-events-none fixed left-5 top-32 bottom-24 z-30 flex w-[260px] max-w-[85vw] flex-col gap-3">
         <AnimatePresence initial={false}>
-          {stocks.map((p) => (
+          {leftPanes.map((p) => (
             <motion.div
               key={p.id}
               layout
@@ -98,7 +124,11 @@ export function GlassPaneStack({ panes, onDismiss }: Props) {
               transition={{ duration: 0.5, ease: [0.2, 0.9, 0.3, 1] }}
               className="pointer-events-auto"
             >
-              <StockCardPane data={p.data} paneId={p.id} onDismiss={onDismiss} />
+              {p.kind === "stock_card" ? (
+                <StockCardPane data={p.data} paneId={p.id} onDismiss={onDismiss} />
+              ) : (
+                <HillIntelPane data={p.data} paneId={p.id} onDismiss={onDismiss} />
+              )}
             </motion.div>
           ))}
         </AnimatePresence>
@@ -136,7 +166,11 @@ export function GlassPaneStack({ panes, onDismiss }: Props) {
               exit={{ opacity: 0, x: 60, scale: 0.96 }}
               transition={{ duration: 0.45, ease: [0.2, 0.9, 0.3, 1] }}
             >
-              <PaneCard pane={p} onDismiss={onDismiss} />
+              <PaneCard
+                pane={p}
+                onDismiss={onDismiss}
+                onSeeAlsoClick={onSeeAlsoClick}
+              />
             </motion.div>
           ))}
         </AnimatePresence>
@@ -150,10 +184,24 @@ export function GlassPaneStack({ panes, onDismiss }: Props) {
 // Subcomponents
 // ─────────────────────────────────────────────────────────────────────────────
 
-function PaneCard({ pane, onDismiss }: { pane: Pane; onDismiss?: (id: string) => void }) {
+function PaneCard({
+  pane,
+  onDismiss,
+  onSeeAlsoClick,
+}: {
+  pane: Pane;
+  onDismiss?: (id: string) => void;
+  onSeeAlsoClick?: (item: SeeAlsoItem) => void;
+}) {
   switch (pane.kind) {
     case "statute":
-      return <StatutePaneCard pane={pane} onDismiss={onDismiss} />;
+      return (
+        <StatutePaneCard
+          pane={pane}
+          onDismiss={onDismiss}
+          onSeeAlsoClick={onSeeAlsoClick}
+        />
+      );
     case "news_ticker":
       return (
         <NewsTickerPane data={pane.data} paneId={pane.id} onDismiss={onDismiss} />
@@ -161,6 +209,14 @@ function PaneCard({ pane, onDismiss }: { pane: Pane; onDismiss?: (id: string) =>
     case "article_spotlight":
       return (
         <ArticleSpotlightPane
+          data={pane.data}
+          paneId={pane.id}
+          onDismiss={onDismiss}
+        />
+      );
+    case "hill_intel":
+      return (
+        <HillIntelPane
           data={pane.data}
           paneId={pane.id}
           onDismiss={onDismiss}
@@ -244,44 +300,69 @@ function HeaderRow({
 function StatutePaneCard({
   pane,
   onDismiss,
+  onSeeAlsoClick,
 }: {
   pane: StatutePane;
   onDismiss?: (id: string) => void;
+  onSeeAlsoClick?: (item: SeeAlsoItem) => void;
 }) {
   const [revealed, setRevealed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setRevealed(true), 220);
     return () => clearTimeout(t);
   }, []);
 
-  // Styled like an actual legal-brief callout: small "Authority" eyebrow,
-  // § section in monospace, statute body in serif with a heavier left
-  // rule, source document attribution at the bottom.
+  const hasMore =
+    (pane.fullText && pane.fullText.length > (pane.quote?.length ?? 0)) ||
+    (pane.seeAlso && pane.seeAlso.length > 0);
+  const confPct =
+    typeof pane.confidence === "number"
+      ? Math.round(pane.confidence * 100)
+      : null;
+  const matchLabel = confPct === null
+    ? null
+    : confPct >= 80
+      ? "High match"
+      : confPct >= 60
+        ? "Good match"
+        : "Partial match";
+
   return (
     <GlassShell>
-      {/* Eyebrow: "Authority" + dismiss */}
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      {/* Eyebrow: "Authority · jurisdiction · match badge" */}
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <Scroll
-            className="h-3.5 w-3.5 text-[var(--accent)]"
+            className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]"
             strokeWidth={1.9}
           />
-          <span className="font-mono text-[9px] uppercase tracking-[0.42em] text-[var(--foreground-faint)]">
+          <span className="truncate font-mono text-[9px] uppercase tracking-[0.42em] text-[var(--foreground-faint)]">
             Authority · {pane.jurisdiction || "—"}
           </span>
         </div>
-        {onDismiss && (
-          <button
-            onClick={() => onDismiss(pane.id)}
-            className="rounded-md p-0.5 text-[var(--foreground-faint)] hover:bg-black/5"
-            aria-label="Dismiss"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        )}
+        <div className="flex items-center gap-1.5">
+          {matchLabel && (
+            <span
+              className="rounded-full border border-[var(--accent)]/40 bg-[var(--accent)]/[0.08] px-1.5 py-0.5 font-mono text-[8.5px] uppercase tracking-[0.22em] text-[var(--accent)]"
+              title={`Cosine similarity ${confPct}%`}
+            >
+              {matchLabel} · {confPct}%
+            </span>
+          )}
+          {onDismiss && (
+            <button
+              onClick={() => onDismiss(pane.id)}
+              className="rounded-md p-0.5 text-[var(--foreground-faint)] hover:bg-black/5"
+              aria-label="Dismiss"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Section number in bigger mono — looks like a real cite line */}
+      {/* Section number in bigger mono */}
       <div className="mb-2 font-mono text-[14px] font-semibold tabular-nums text-[var(--foreground)]">
         {pane.section}
       </div>
@@ -299,10 +380,47 @@ function StatutePaneCard({
               {pane.title}
             </h4>
           )}
-          {/* Heavier left rule + darker serif quote — reads as statute */}
           <blockquote className="border-l-[3px] border-[var(--foreground)] bg-[var(--background)]/40 py-1 pl-4 font-display text-[13.5px] leading-[1.55] text-[var(--foreground)]">
-            {pane.quote}
+            {expanded && pane.fullText ? pane.fullText : pane.quote}
           </blockquote>
+
+          {/* Expand: full statute + see-also pills */}
+          {hasMore && (
+            <button
+              onClick={() => setExpanded((p) => !p)}
+              className="mt-2 flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.32em] text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
+            >
+              {expanded ? "Collapse" : "Read full statute"}
+              <span aria-hidden>{expanded ? "▲" : "▼"}</span>
+            </button>
+          )}
+          {expanded && pane.seeAlso && pane.seeAlso.length > 0 && (
+            <div className="mt-3">
+              <div className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.32em] text-[var(--foreground-faint)]">
+                See also · tap to open
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {pane.seeAlso.map((s, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => onSeeAlsoClick?.(s)}
+                    className="group inline-flex items-center gap-1.5 rounded-full border border-[var(--rule-strong)] bg-white/60 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.24em] text-[var(--foreground-muted)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--foreground)]"
+                    title={s.source}
+                  >
+                    <span className="text-[var(--foreground)] group-hover:text-[var(--accent)]">
+                      {s.section}
+                    </span>
+                    <span className="text-[var(--foreground-faint)]">·</span>
+                    <span className="max-w-[160px] truncate normal-case tracking-normal">
+                      {s.title}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="mt-3 flex items-center justify-between border-t border-[var(--rule-strong)] pt-2 font-mono text-[9px] uppercase tracking-[0.28em] text-[var(--foreground-faint)]">
             <span>Harvey, cited</span>
             <span className="flex items-center gap-1.5">

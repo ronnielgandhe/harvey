@@ -236,33 +236,59 @@ export function PearsonHeader({ live = false, variant = "center" }: Props) {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// LiveIndicator — standalone "● LIVE MM:SS" pill, larger and more
-// prominent than the old inline version. Renders in the bottom-right
-// corner during a call so the user clearly sees recording is active.
+// LiveIndicator — "● LIVE MM:SS" pill pinned bottom-right. Accepts
+// optional `elapsedSec` + `paused` so a parent can drive it externally
+// (e.g. the OTR toggle in CallInterface). Falls back to an internal
+// self-ticking timer if no props are passed.
 // ────────────────────────────────────────────────────────────────────────
-export function LiveIndicator() {
-  const [elapsed, setElapsed] = useState(0);
+export function LiveIndicator({
+  elapsedSec,
+  paused = false,
+}: {
+  elapsedSec?: number;
+  paused?: boolean;
+} = {}) {
+  const [internal, setInternal] = useState(0);
   useEffect(() => {
+    if (elapsedSec !== undefined) return; // parent drives
     const start = Date.now();
     const id = setInterval(
-      () => setElapsed(Math.floor((Date.now() - start) / 1000)),
+      () => setInternal(Math.floor((Date.now() - start) / 1000)),
       1000,
     );
     return () => clearInterval(id);
-  }, []);
+  }, [elapsedSec]);
+
+  const shown = elapsedSec !== undefined ? elapsedSec : internal;
+  const borderClass = paused
+    ? "border-[var(--foreground-faint)]/50"
+    : "border-[var(--crimson)]/50";
+  const textClass = paused ? "text-[var(--foreground-muted)]" : "text-[var(--crimson)]";
+  const dotBg = paused ? "bg-[var(--foreground-faint)]" : "bg-[var(--crimson)]";
+  const shadow = paused
+    ? "shadow-[0_6px_32px_-12px_rgba(80,80,80,0.25)]"
+    : "shadow-[0_6px_32px_-12px_rgba(220,38,38,0.35)]";
 
   return (
     <div className="pointer-events-none fixed bottom-6 right-6 z-40">
-      <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-[var(--crimson)]/50 bg-[rgba(255,255,255,0.92)] px-5 py-2.5 shadow-[0_6px_32px_-12px_rgba(220,38,38,0.35)] backdrop-blur">
+      <div
+        className={`pointer-events-auto flex items-center gap-3 rounded-full border bg-[rgba(255,255,255,0.92)] px-5 py-2.5 backdrop-blur ${borderClass} ${shadow}`}
+      >
         <span className="relative flex h-2.5 w-2.5">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--crimson)] opacity-75" />
-          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[var(--crimson)]" />
+          {!paused && (
+            <span
+              className={`absolute inline-flex h-full w-full animate-ping rounded-full ${dotBg} opacity-75`}
+            />
+          )}
+          <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${dotBg}`} />
         </span>
-        <span className="font-mono text-[13px] font-semibold uppercase tracking-[0.32em] text-[var(--crimson)]">
-          Live
+        <span
+          className={`font-mono text-[13px] font-semibold uppercase tracking-[0.32em] ${textClass}`}
+        >
+          {paused ? "Paused" : "Live"}
         </span>
-        <span className="font-mono text-[13px] tabular-nums text-[var(--crimson)]">
-          {fmtElapsed(elapsed)}
+        <span className={`font-mono text-[13px] tabular-nums ${textClass}`}>
+          {fmtElapsed(shown)}
         </span>
       </div>
     </div>

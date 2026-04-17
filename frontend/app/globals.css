@@ -313,3 +313,43 @@ body {
   background: var(--accent);
   opacity: 0.35;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Off-the-record dim — parent wraps content to desaturate while
+   the OTR overlay is active. Pure theater.
+───────────────────────────────────────────────────────────── */
+.otr-dim {
+  filter: saturate(0.45) contrast(0.95) brightness(0.88);
+  transition: filter 0.45s ease;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Print CSS — used by CaseReceipt's "Print · Save PDF" button.
+   Hides everything except the receipt itself.
+───────────────────────────────────────────────────────────── */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .case-receipt,
+  .case-receipt * {
+    visibility: visible !important;
+  }
+  .case-receipt {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: white !important;
+    padding: 48px !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
