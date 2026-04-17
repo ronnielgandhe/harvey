@@ -5,7 +5,7 @@
       "name": "harvey-frontend",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "/Users/ronniel/Desktop/harvey/frontend", "run", "dev"],
-      "port": 3000
+      "port": 3002
     }
   ]
 }

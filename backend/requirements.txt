@@ -14,6 +14,9 @@ langchain-chroma>=0.1
 chromadb>=0.5
 pypdf>=5.0
 
+# News (Google News RSS for current_events tool)
+feedparser>=6.0
+
 # Misc
 python-dotenv>=1.0
 tiktoken>=0.7

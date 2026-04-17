@@ -89,7 +89,7 @@ async def entrypoint(ctx: JobContext) -> None:
     session = AgentSession(
         stt=deepgram.STT(model="nova-3"),
         llm=openai.LLM(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             parallel_tool_calls=True,
             temperature=0.7,
         ),
@@ -104,14 +104,19 @@ async def entrypoint(ctx: JobContext) -> None:
         room_input_options=RoomInputOptions(),
     )
 
-    # Opening line — Harvey greets when the user joins
-    await session.generate_reply(
-        instructions=(
-            "Greet the user with exactly one short line: "
-            "\"Tell me what we're working with.\" "
-            "Do not introduce yourself further. Wait for them to talk."
-        )
-    )
+    # Signature greeting — hard-coded, sent straight to TTS so it fires
+    # the instant the user connects. No LLM round-trip, no lag.
+    import random
+    HARVEY_GREETINGS = [
+        "Goddamn it. You're back. Let's get to work.",
+        "You're in trouble or you wouldn't be calling. Tell me.",
+        "Sit down. What are we dealing with.",
+        "Talk fast. I bill in six minute increments.",
+        "I'm listening. Make it count.",
+        "You called. So it's bad. How bad.",
+        "Whatever it is, we close it. Start talking.",
+    ]
+    await session.say(random.choice(HARVEY_GREETINGS), allow_interruptions=True)
 
 
 def main() -> None:
