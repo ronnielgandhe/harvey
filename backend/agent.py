@@ -158,10 +158,15 @@ async def entrypoint(ctx: JobContext) -> None:
             return
         line = random.choice(HARVEY_LORE)
         log.info("OTR engaged — dropping lore: %r", line[:80])
-        # Schedule on the session's event loop so we don't block the
-        # data-received callback.
-        import asyncio
-        asyncio.create_task(session.say(line, allow_interruptions=True))
+        # livekit-agents 1.x: session.say() returns a SpeechHandle
+        # (not a coroutine). It schedules the speech on the session's
+        # loop internally, so just call it and let it fire. Wrapping
+        # in asyncio.create_task() raises TypeError because a handle
+        # is not awaitable by create_task.
+        try:
+            session.say(line, allow_interruptions=True)
+        except Exception as exc:  # pragma: no cover — never crash the callback
+            log.warning("OTR lore say failed: %s", exc)
 
     await session.start(
         agent=HarveyAgent(),
