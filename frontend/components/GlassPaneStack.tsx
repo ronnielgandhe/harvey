@@ -50,6 +50,10 @@ export interface StatutePane {
   title: string;
   quote: string;
   fullText?: string;
+  /** French counterpart. Canadian federal statutes are bilingual —
+   *  both the English and French texts are equally official. */
+  frenchQuote?: string;
+  frenchFullText?: string;
   confidence?: number;
   seeAlso?: SeeAlsoItem[];
 }
@@ -93,44 +97,72 @@ interface Props {
   panes: Pane[];
   onDismiss?: (id: string) => void;
   onSeeAlsoClick?: (item: SeeAlsoItem) => void;
+  /** ID of the pane Harvey has focused / expanded. Gets a scale-up
+   *  treatment so voice-commanded "expand X" is visually obvious. */
+  focusedId?: string | null;
+  /** When true, the focused pane is hidden from the lane stacks — the
+   *  parent is rendering it in a centered overlay instead. */
+  hideFocused?: boolean;
 }
 
-export function GlassPaneStack({ panes, onDismiss, onSeeAlsoClick }: Props) {
-  const toolCalls = panes.filter((p): p is ToolCallPane => p.kind === "tool_call");
-  const cards = panes.filter(
+export function GlassPaneStack({
+  panes,
+  onDismiss,
+  onSeeAlsoClick,
+  focusedId,
+  hideFocused,
+}: Props) {
+  const visible = hideFocused && focusedId
+    ? panes.filter((p) => p.id !== focusedId)
+    : panes;
+  const toolCalls = visible.filter((p): p is ToolCallPane => p.kind === "tool_call");
+  const cards = visible.filter(
     (p) =>
       p.kind !== "tool_call" &&
       p.kind !== "stock_card" &&
       p.kind !== "hill_intel",
   );
   // LEFT stack: market / insider lane (stock + Congress trades)
-  const leftPanes = panes.filter(
+  const leftPanes = visible.filter(
     (p): p is StockCardPaneType | HillIntelPaneType =>
       p.kind === "stock_card" || p.kind === "hill_intel",
   );
 
   return (
     <>
-      {/* Left stack: stock tickers + Hill intel */}
-      <div className="pointer-events-none fixed left-5 top-32 bottom-24 z-30 flex w-[320px] max-w-[85vw] flex-col gap-3">
-        <AnimatePresence initial={false}>
-          {leftPanes.map((p) => (
-            <motion.div
-              key={p.id}
-              layout
-              initial={{ opacity: 0, x: -80, scale: 0.94 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: -60, scale: 0.94 }}
-              transition={{ duration: 0.5, ease: [0.2, 0.9, 0.3, 1] }}
-              className="pointer-events-auto"
-            >
-              {p.kind === "stock_card" ? (
-                <StockCardPane data={p.data} paneId={p.id} onDismiss={onDismiss} />
-              ) : (
-                <HillIntelPane data={p.data} paneId={p.id} onDismiss={onDismiss} />
-              )}
-            </motion.div>
-          ))}
+      {/* Left stack: stock tickers + Hill intel.
+          Only the newest pane is on screen. When a new one comes in,
+          the previous one exits left before the new one enters — no
+          awkward visual overlap of two different-height cards. */}
+      <div className="pointer-events-none fixed left-5 top-32 bottom-24 z-30 w-[320px] max-w-[85vw]">
+        <AnimatePresence initial={false} mode="wait">
+          {leftPanes.slice(0, 1).map((p) => {
+            const isFocused = focusedId === p.id;
+            return (
+              <motion.div
+                key={p.id}
+                initial={{ opacity: 0, x: -80, scale: 0.94 }}
+                animate={{
+                  opacity: 1,
+                  x: 0,
+                  scale: isFocused ? 1.06 : 1,
+                  boxShadow: isFocused
+                    ? "0 24px 60px -18px rgba(15, 23, 42, 0.35)"
+                    : "0 0 0 rgba(0,0,0,0)",
+                }}
+                exit={{ opacity: 0, x: -60, scale: 0.94 }}
+                transition={{ duration: 0.45, ease: [0.2, 0.9, 0.3, 1] }}
+                className="pointer-events-auto absolute inset-x-0 top-0"
+                style={{ transformOrigin: "top left" }}
+              >
+                {p.kind === "stock_card" ? (
+                  <StockCardPane data={p.data} paneId={p.id} onDismiss={onDismiss} />
+                ) : (
+                  <HillIntelPane data={p.data} paneId={p.id} onDismiss={onDismiss} />
+                )}
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
       </div>
 
@@ -154,25 +186,37 @@ export function GlassPaneStack({ panes, onDismiss, onSeeAlsoClick }: Props) {
         </AnimatePresence>
       </div>
 
-      {/* Stacked content cards */}
-      <div className="thin-scroll pointer-events-auto flex flex-1 flex-col gap-3 overflow-y-auto pr-1">
-        <AnimatePresence initial={false}>
-          {cards.map((p) => (
-            <motion.div
-              key={p.id}
-              layout
-              initial={{ opacity: 0, x: 100, scale: 0.96 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 60, scale: 0.96 }}
-              transition={{ duration: 0.45, ease: [0.2, 0.9, 0.3, 1] }}
-            >
-              <PaneCard
-                pane={p}
-                onDismiss={onDismiss}
-                onSeeAlsoClick={onSeeAlsoClick}
-              />
-            </motion.div>
-          ))}
+      {/* Right lane: only the newest pane visible. Old one exits before
+          new one enters — clean swap, no overlap. */}
+      <div className="pointer-events-auto relative flex-1">
+        <AnimatePresence initial={false} mode="wait">
+          {cards.slice(0, 1).map((p) => {
+            const isFocused = focusedId === p.id;
+            return (
+              <motion.div
+                key={p.id}
+                initial={{ opacity: 0, x: 100, scale: 0.96 }}
+                animate={{
+                  opacity: 1,
+                  x: 0,
+                  scale: isFocused ? 1.06 : 1,
+                  boxShadow: isFocused
+                    ? "0 24px 60px -18px rgba(15, 23, 42, 0.35)"
+                    : "0 0 0 rgba(0,0,0,0)",
+                }}
+                exit={{ opacity: 0, x: 60, scale: 0.96 }}
+                transition={{ duration: 0.4, ease: [0.2, 0.9, 0.3, 1] }}
+                className="absolute inset-x-0 top-0"
+                style={{ transformOrigin: "top right" }}
+              >
+                <PaneCard
+                  pane={p}
+                  onDismiss={onDismiss}
+                  onSeeAlsoClick={onSeeAlsoClick}
+                />
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
       </div>
       </div>
@@ -380,9 +424,28 @@ export function StatutePaneCard({
               {pane.title}
             </h4>
           )}
-          <blockquote className="border-l-[3px] border-[var(--foreground)] bg-[var(--background)]/40 py-1 pl-4 font-display text-[13.5px] leading-[1.55] text-[var(--foreground)]">
-            {expanded && pane.fullText ? pane.fullText : pane.quote}
-          </blockquote>
+          {/* EN | FR side-by-side. Canadian federal statutes are
+              bilingual — both versions are equally official. On narrow
+              lanes the two stack vertically; on the expanded overlay
+              (wider container) they flow side-by-side. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <blockquote className="border-l-[3px] border-[var(--foreground)] bg-[var(--background)]/40 py-1 pl-4 font-display text-[13.5px] leading-[1.55] text-[var(--foreground)]">
+              <div className="mb-1 font-mono text-[8.5px] uppercase tracking-[0.32em] text-[var(--foreground-faint)]">
+                English
+              </div>
+              {expanded && pane.fullText ? pane.fullText : pane.quote}
+            </blockquote>
+            {(pane.frenchQuote || pane.frenchFullText) && (
+              <blockquote className="border-l-[3px] border-[var(--accent)]/60 bg-[var(--accent-soft)]/30 py-1 pl-4 font-display text-[13.5px] italic leading-[1.55] text-[var(--foreground)]">
+                <div className="mb-1 font-mono text-[8.5px] non-italic uppercase tracking-[0.32em] text-[var(--accent)]/80 not-italic">
+                  Français
+                </div>
+                {expanded && pane.frenchFullText
+                  ? pane.frenchFullText
+                  : pane.frenchQuote ?? ""}
+              </blockquote>
+            )}
+          </div>
 
           {/* Expand: full statute + see-also pills */}
           {hasMore && (

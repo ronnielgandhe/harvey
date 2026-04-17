@@ -18,6 +18,10 @@ interface Props {
     durationSec: number;
     counts: ReceiptCounts;
     onConfirm: () => void;
+    /** Clears the receipt without starting a new call — returns the
+     *  signature slot to Meet Harvey. Surfaces as a small back arrow
+     *  in the top-left of the receipt. */
+    onBack: () => void;
   } | null;
 }
 
@@ -37,21 +41,24 @@ export function IncomingCall({ onAnswer, loading, error, postCall }: Props) {
   return (
     <div className="relative flex min-h-screen w-full items-center justify-center">
       <div className="grid w-full max-w-[1100px] grid-cols-1 items-center gap-16 px-10 pb-20 pt-[54vh] md:grid-cols-[1fr_1fr] md:gap-20 md:pt-[52vh]">
-        {/* LEFT — signature OR post-call receipt */}
+        {/* LEFT — signature OR post-call receipt. `mode="popLayout"`
+            keeps exit + enter parallel so "Back" feels instant
+            (sequential mode="wait" added a ~0.4s lag). */}
         <div className="flex md:justify-end">
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="popLayout">
             {isPostCall ? (
               <motion.div
                 key="receipt"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
-                className="w-full max-w-[460px]"
+                transition={{ duration: 0.25, ease: [0.19, 1, 0.22, 1] }}
+                className="w-full max-w-[520px]"
               >
                 <PostCallReceipt
                   durationSec={postCall!.durationSec}
                   counts={postCall!.counts}
+                  onBack={postCall!.onBack}
                 />
               </motion.div>
             ) : (
@@ -60,7 +67,7 @@ export function IncomingCall({ onAnswer, loading, error, postCall }: Props) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
+                transition={{ duration: 0.2 }}
               >
                 <MeetHarvey />
               </motion.div>
@@ -75,7 +82,7 @@ export function IncomingCall({ onAnswer, loading, error, postCall }: Props) {
           className="flex flex-col items-center gap-3 md:items-start"
           style={{ paddingLeft: "var(--phone-nudge, 120px)" }}
         >
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="popLayout">
             {isPostCall ? (
               <motion.div
                 key="call-again"
@@ -100,10 +107,18 @@ export function IncomingCall({ onAnswer, loading, error, postCall }: Props) {
             ) : (
               <motion.div
                 key="sonar"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
+                initial={{ opacity: 0, scale: 0.92, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
+                transition={{
+                  // Synced to the MeetHarvey instant-mode cadence on
+                  // the left: Specter line lands at ~1.25s from
+                  // remount. Phone lands at ~1.3s so both elements
+                  // settle on the same beat.
+                  duration: 1.0,
+                  delay: 0.3,
+                  ease: [0.22, 0.9, 0.25, 1],
+                }}
                 className="flex flex-col items-center gap-3"
               >
                 <CallCTA

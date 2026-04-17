@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { ArrowLeft } from "lucide-react";
 import type { ReceiptCounts } from "./CaseReceipt";
 
 /**
@@ -17,6 +18,10 @@ import type { ReceiptCounts } from "./CaseReceipt";
 interface Props {
   durationSec: number;
   counts: ReceiptCounts;
+  /** Optional "go back" handler — surfaces as a small arrow in the
+   *  top-left of the receipt. Clicking dismisses the receipt without
+   *  starting a new call (returns to the signed Meet Harvey hero). */
+  onBack?: () => void;
 }
 
 const RATE = {
@@ -42,7 +47,7 @@ function fmtDuration(sec: number): string {
   return `${m.toString().padStart(2, "0")}:${r.toString().padStart(2, "0")}`;
 }
 
-export function PostCallReceipt({ durationSec, counts }: Props) {
+export function PostCallReceipt({ durationSec, counts, onBack }: Props) {
   const consultationCost = (durationSec / 3600) * RATE.consultationPerHour;
   const statuteCost = counts.statutes * RATE.statute;
   const newsCost = counts.news * RATE.news;
@@ -100,10 +105,27 @@ export function PostCallReceipt({ durationSec, counts }: Props) {
 
   return (
     <div
-      // Receipt paper — white, deckle-edged feel with a soft lift. Fixed
-      // width so it sits in the signature slot without pushing layout.
-      className="relative w-full rounded-[2px] border border-[var(--rule-strong)] bg-white px-7 pb-6 pt-7 shadow-[0_22px_44px_-18px_rgba(20,18,14,0.22),0_2px_6px_rgba(0,0,0,0.04)]"
+      // Receipt paper — white, deckle-edged feel with a soft lift. Bit
+      // bigger overall so the Back affordance doesn't crowd the
+      // letterhead.
+      className="relative w-full rounded-[2px] border border-[var(--rule-strong)] bg-white px-8 pb-7 pt-6 shadow-[0_22px_44px_-18px_rgba(20,18,14,0.22),0_2px_6px_rgba(0,0,0,0.04)]"
     >
+      {/* Back row — lives ABOVE the letterhead so it has its own
+          vertical gutter instead of crowding the PSL wordmark. */}
+      {onBack && (
+        <div className="mb-5 flex items-center">
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Back to Meet Harvey"
+            className="flex items-center gap-1.5 rounded-md -ml-1 px-1.5 py-1 font-mono text-[9.5px] uppercase tracking-[0.32em] text-[var(--foreground-faint)] transition-colors hover:bg-black/[0.04] hover:text-[var(--foreground)]"
+          >
+            <ArrowLeft className="h-3 w-3" strokeWidth={2} />
+            Back
+          </button>
+        </div>
+      )}
+
       {/* Letterhead */}
       <div className="flex items-baseline justify-between border-b-2 border-[var(--foreground)] pb-3">
         <div>

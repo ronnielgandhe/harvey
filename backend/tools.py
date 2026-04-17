@@ -126,6 +126,27 @@ def _shorten(text: str, limit: int = 360) -> str:
     return cut + "…"
 
 
+# Rough English detection — the corpus has bilingual Canadian gov PDFs
+# that occasionally surface chunks of French procedural text as top
+# matches for English queries (they ace the Chroma cosine search on
+# generic "accused / payment / penalty" vocabulary without being what
+# the user asked about). If a chunk is >40% French-flagged, demote it.
+_FRENCH_MARKERS = re.compile(
+    r"\b(l'|d'|n'|qu'|est-ce|est tenu|du fait que|l’accusé|au cas où|au moins|plaidoyer|lorsqu|aux fins|comparaître|selon le cas)\b",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+def _looks_french(text: str) -> bool:
+    """Heuristic: does this chunk read as primarily French?"""
+    if not text:
+        return False
+    # Count distinctive French function words / contractions per 100 chars.
+    hits = len(_FRENCH_MARKERS.findall(text))
+    density = hits / max(len(text) / 100.0, 1.0)
+    return density > 0.8
+
+
 # ---------------------------------------------------------------------------
 # Tool 1 — cite_statute (RAG over legal corpus)
 # ---------------------------------------------------------------------------
@@ -149,46 +170,72 @@ async def cite_statute(
     await _emit_tool_call(ctx, "cite_statute")
 
     rag = get_rag()
-    # Retrieve with scores so we can publish a transparency confidence
-    # badge alongside the statute card. Falls back gracefully if the
-    # scored method isn't available on the underlying retriever.
+    # Retrieve a wider slate so we can filter bilingual/French chunks
+    # (the corpus has both the English and French version of every
+    # Canadian federal statute — French chunks sometimes outrank English
+    # on Chroma's cosine because they share procedural vocabulary).
     try:
-        scored = rag._store.similarity_search_with_score(query, k=5)
+        scored = rag._store.similarity_search_with_score(query, k=10)
     except Exception:
         scored = []
 
+    # Drop French-heavy chunks so Harvey always cites the English version.
+    scored = [(d, s) for d, s in scored if not _looks_french(d.page_content)]
+
+    # Confidence floor: if even the best survivor is garbage, don't
+    # fabricate a citation. Chroma L2 distance: ~0.9 ≈ 55% confidence.
+    MIN_DISTANCE = 0.9  # reject anything worse than this
+    if scored and scored[0][1] > MIN_DISTANCE:
+        log.info("cite_statute: top score %.3f > floor %.3f — no confident match",
+                 scored[0][1], MIN_DISTANCE)
+        scored = []
+
     if not scored:
-        hits = rag.retrieve(query, k=3)
-        if not hits:
-            await _publish(ctx, {
-                "type": "statute_card",
-                "payload": {
-                    "jurisdiction": "—",
-                    "section": "No match",
-                    "title": "No relevant passage found",
-                    "quote": f"Nothing in the corpus matched: {query}",
-                    "source": "",
-                    "see_also": [],
-                },
-            })
-            return "No matching statute found."
-        top_doc_dict = hits[0]
-        top_text = top_doc_dict["text"]
-        top_source = top_doc_dict.get("source", "")
-        top_section = top_doc_dict.get("section") or _guess_section(top_text, top_source)
-        top_title = top_doc_dict.get("title") or _guess_title(top_text)
-        see_also_docs = hits[1:]
-        confidence = None
-    else:
-        top_doc, top_score = scored[0]
-        top_text = top_doc.page_content
-        top_source = (top_doc.metadata or {}).get("source", "")
-        top_section = (top_doc.metadata or {}).get("section") or _guess_section(top_text, top_source)
-        top_title = (top_doc.metadata or {}).get("title") or _guess_title(top_text)
-        # Chroma returns L2 distance for cosine: 0 = identical, higher = worse.
-        # Convert to a 0..1 "confidence" — roughly 1 - distance/2.
-        confidence = max(0.0, min(1.0, 1.0 - float(top_score) / 2.0))
-        see_also_docs = [d for d, _ in scored[1:4]]
+        await _publish(ctx, {
+            "type": "statute_card",
+            "payload": {
+                "jurisdiction": "—",
+                "section": "No Canadian match",
+                "title": "No on-point statute in corpus",
+                "quote": (
+                    f"Nothing in the indexed Canadian corpus matched "
+                    f"closely enough for: {query}. Speak from general "
+                    f"knowledge instead."
+                ),
+                "source": "",
+                "see_also": [],
+                "confidence": 0.0,
+            },
+        })
+        return (
+            "No strong Canadian statute match. Speak general-principle "
+            "answer, be clear it's not a specific citation."
+        )
+
+    top_doc, top_score = scored[0]
+    top_text = top_doc.page_content
+    top_source = (top_doc.metadata or {}).get("source", "")
+    top_section = (top_doc.metadata or {}).get("section") or _guess_section(top_text, top_source)
+    top_title = (top_doc.metadata or {}).get("title") or _guess_title(top_text)
+    # Chroma returns L2 distance for cosine: 0 = identical, higher = worse.
+    # Convert to a 0..1 "confidence" — roughly 1 - distance/2.
+    confidence = max(0.0, min(1.0, 1.0 - float(top_score) / 2.0))
+    see_also_docs = [d for d, _ in scored[1:4]]
+
+    # Find the French counterpart. Canadian federal statutes are
+    # bilingual — both the English and the French are equally official.
+    # Use the English chunk's own text as a query to surface the
+    # French version of the same section; filter for French-flagged
+    # chunks only.
+    french_text: str | None = None
+    try:
+        fr_scored = rag._store.similarity_search_with_score(top_text, k=10)
+        fr_hits = [(d, s) for d, s in fr_scored if _looks_french(d.page_content)]
+        fr_hits.sort(key=lambda x: x[1])
+        if fr_hits:
+            french_text = fr_hits[0][0].page_content
+    except Exception:
+        french_text = None
 
     source = os.path.basename(top_source).replace("_", " ").replace(".pdf", "")
     jurisdiction = (
@@ -232,6 +279,10 @@ async def cite_statute(
             "title": _shorten(top_title, 90),
             "quote": _shorten(top_text, 360),
             "full_text": top_text,
+            # Bilingual — Canadian federal statutes are equally official
+            # in both languages. Frontend renders EN | FR side-by-side.
+            "french_quote": _shorten(french_text, 360) if french_text else None,
+            "french_full_text": french_text,
             "source": source,
             "confidence": confidence,
             "see_also": see_also[:3],
@@ -260,12 +311,22 @@ def _normalize_news_item(entry: Any) -> dict[str, str]:
     # Google News RSS summaries often contain HTML; strip lazily.
     summary = re.sub(r"<[^>]+>", " ", summary)
     summary = " ".join(summary.split())
+    # Normalize length — RSS summaries oscillate between 40 and 400 chars.
+    # Clamp to 180 so news cards look visually consistent regardless of
+    # source. Frontend pads with a fixed min-height so short ones don't
+    # collapse either.
+    summary = summary[:180]
+    if len(summary) >= 175:
+        # Trim to word boundary so we don't cut mid-sentence in the pane.
+        last_space = summary.rfind(" ")
+        if last_space > 140:
+            summary = summary[:last_space] + "…"
     return {
         "title": title,
         "source": source,
         "published": published,
         "link": link,
-        "summary": summary[:260],
+        "summary": summary,
     }
 
 
@@ -307,20 +368,29 @@ async def current_events(
         "payload": {"query": query, "items": items},
     })
 
-    # Also fire an `article_spotlight` for the TOP headline so the
-    # frontend can render a hero summary card that opens alongside the
-    # ticker. Gives the UI a multi-layered feel while Harvey talks.
+    # Fire an `article_spotlight` with MULTIPLE items so the frontend
+    # can render a flip-through deck of editorial cards (different
+    # sepia tints per card, prev/next arrows). Makes short RSS blurbs
+    # feel fuller — if any single summary is thin, the user can just
+    # flip to the next one.
     if items:
-        top = items[0]
+        # Ensure every spotlight item has a readable body — fall back to
+        # the headline if the summary is empty so no card renders blank.
+        spotlight_items = [
+            {
+                "title": it["title"],
+                "source": it["source"],
+                "published": it["published"],
+                "link": it["link"],
+                "summary": it["summary"] or it["title"],
+            }
+            for it in items[:4]
+        ]
         await _publish(ctx, {
             "type": "article_spotlight",
             "payload": {
                 "query": query,
-                "title": top["title"],
-                "source": top["source"],
-                "published": top["published"],
-                "link": top["link"],
-                "summary": top["summary"] or top["title"],
+                "items": spotlight_items,
             },
         })
 
@@ -661,4 +731,85 @@ async def check_the_hill(
     return f"Hill intel on {lookup}:\n" + "\n".join(bullets)
 
 
-ALL_TOOLS = [cite_statute, current_events, stock_ticker, check_the_hill]
+# ---------------------------------------------------------------------------
+# Tool 5 — manage_screen (voice-driven UI control)
+# ---------------------------------------------------------------------------
+
+
+@function_tool
+async def manage_screen(
+    ctx: RunContext,
+    action: str,
+    target: str,
+) -> str:
+    """Dismiss, clear, or highlight UI cards on the user's screen.
+    Call this ONLY when the user explicitly asks for it
+    ("get rid of the Tesla card", "close the hill intel", "clear the
+    screen", "highlight the Nvidia one", "move the news off"). Never
+    volunteer it.
+
+    Args:
+        action: One of:
+            "dismiss"  — remove matching pane(s)
+            "clear"    — remove everything on screen
+            "highlight"— briefly pulse a pane to draw attention
+        target: Which pane. Case-insensitive. Accepted values:
+            "last"     — the most recent pane added
+            "stock"    — all stock cards
+            "hill"     — all Hill intel cards
+            "statute"  — all statute cards
+            "news"     — news ticker + article spotlight
+            "all"      — everything (pairs with action=clear)
+            A ticker symbol (e.g. "NVDA") — matches stock + hill for that ticker.
+    """
+    log.info("manage_screen(action=%r, target=%r)", action, target)
+    await _emit_tool_call(ctx, "manage_screen")
+    action_norm = (action or "").lower().strip()
+    target_norm = (target or "").lower().strip()
+    await _publish(ctx, {
+        "type": "pane_action",
+        "payload": {"action": action_norm, "target": target_norm},
+    })
+    return f"Screen action dispatched: {action_norm} · {target_norm}"
+
+
+# ---------------------------------------------------------------------------
+# Tool 6 — end_call (voice-driven hang-up)
+# ---------------------------------------------------------------------------
+
+
+@function_tool
+async def end_call(ctx: RunContext) -> str:
+    """Wrap the call. Call this when the user says goodbye — "bye",
+    "bye now", "end it", "we're done", "that's all", "take care",
+    "talk later", "I gotta go", "end the call", "hang up", etc.
+
+    Before firing this tool, deliver ONE short send-off line in
+    character — never a whole monologue. Don't ask "are you sure?".
+    If they said goodbye, they meant it.
+
+    The frontend flashes the itemized invoice, auto-confirms it, and
+    drops the user back on the idle page with the post-call receipt
+    in the signature slot.
+
+    Example Harvey send-offs:
+      - "Stay out of trouble."
+      - "Don't get arrested."
+      - "Call me when you win."
+      - "We're done. You owe me."
+      - "Good. Go close it."
+    """
+    log.info("end_call triggered")
+    await _emit_tool_call(ctx, "end_call")
+    await _publish(ctx, {"type": "end_call", "payload": {}})
+    return "Call wrap dispatched."
+
+
+ALL_TOOLS = [
+    cite_statute,
+    current_events,
+    stock_ticker,
+    check_the_hill,
+    manage_screen,
+    end_call,
+]

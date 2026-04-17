@@ -259,40 +259,75 @@ export function PearsonHeader({
             className="h-[64px] w-auto flex-shrink-0"
           />
 
-          {/* READ DOCS — pinned to the bottom-RIGHT edge of the logo
-              row so it sits under the Bluejay wordmark, not under PSL.
-              Absolutely positioned so it's removed from the flex row
-              and doesn't shift the logo layout. Fades in only AFTER
-              the initial splash→final glide is done, so it feels like
-              it arrives with the logos settling into place. */}
-          {onOpenDocs && variant === "center" && (
-            <motion.button
-              type="button"
-              onClick={onOpenDocs}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{
-                opacity: initialTravelDone ? 1 : 0,
-                y: initialTravelDone ? 0 : 4,
-              }}
-              transition={{
-                duration: 0.7,
-                delay: initialTravelDone ? 0.15 : 0,
-                ease: [0.19, 1, 0.22, 1],
-              }}
-              className="group pointer-events-auto absolute right-0 top-full mt-4 inline-flex items-center gap-1.5 border-b border-transparent pb-0.5 font-mono text-[10px] uppercase tracking-[0.38em] text-[var(--foreground-muted)] transition-colors hover:border-[var(--foreground)] hover:text-[var(--foreground)]"
-            >
-              Read docs
-              <ArrowUpRight
-                className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                strokeWidth={2}
-              />
-            </motion.button>
-          )}
+          {/* READ DOCS used to live here, nested inside this motion.div.
+              That caused it to glide along with the logo during pose
+              changes (splash → center, end-of-call corner → center).
+              Now it's a standalone fixed element further down so the
+              button never moves — it just fades in/out based on whether
+              the logos are in the center pose. */}
         </div>
       </motion.div>
+
+      {/* READ DOCS (standalone). Decoupled from the logo motion group
+          so the end-of-call corner→center glide no longer drags the
+          button across the screen. Positioned under where the Bluejay
+          side of the center-pose logo lands. Fades in only when:
+            - The initial splash glide is done
+            - The header is in the "center" variant (idle, not in-call)
+          Goes to 0 instantly on variant=corner so it vanishes when a
+          call starts / reappears only when we return to center. */}
+      {onOpenDocs && (
+        <motion.button
+          type="button"
+          onClick={onOpenDocs}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{
+            opacity: initialTravelDone && variant === "center" ? 1 : 0,
+            y: initialTravelDone && variant === "center" ? 0 : 4,
+          }}
+          transition={{
+            // Land AFTER MeetHarvey + phone settle on the first load.
+            // On subsequent variant swaps (corner→center), keep it
+            // snappy — a short 0.35s fade.
+            duration: initialTravelDone && variant === "center" ? 0.55 : 0.35,
+            delay:
+              // First cinematic only: wait for hero signature + phone
+              // to finish. Otherwise: immediate.
+              initialTravelDone && variant === "center" && !_readDocsShownOnce
+                ? 2.3
+                : 0.05,
+            ease: [0.19, 1, 0.22, 1],
+          }}
+          onAnimationComplete={() => {
+            if (variant === "center" && initialTravelDone) {
+              _readDocsShownOnce = true;
+            }
+          }}
+          style={{
+            position: "fixed",
+            top: "calc(42vh + 68px)",
+            left: "calc(50% + 150px)",
+            zIndex: 55,
+            pointerEvents:
+              initialTravelDone && variant === "center" ? "auto" : "none",
+          }}
+          className="group inline-flex items-center gap-1.5 border-b border-transparent pb-0.5 font-mono text-[10px] uppercase tracking-[0.38em] text-[var(--foreground-muted)] transition-colors hover:border-[var(--foreground)] hover:text-[var(--foreground)]"
+        >
+          Read docs
+          <ArrowUpRight
+            className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+            strokeWidth={2}
+          />
+        </motion.button>
+      )}
     </>
   );
 }
+
+// Module-scoped: true once Read Docs has played its slow "land with
+// the hero" reveal once. Subsequent appearances (after a call ends)
+// use the snappier fade — no need to re-wait 2.3s every time.
+let _readDocsShownOnce = false;
 
 // ────────────────────────────────────────────────────────────────────────
 // LiveIndicator — "● LIVE MM:SS" pill pinned bottom-right. Accepts

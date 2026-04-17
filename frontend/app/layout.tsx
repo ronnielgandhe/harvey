@@ -1,5 +1,11 @@
 import type { Metadata } from "next";
-import { Inter, Fraunces, JetBrains_Mono, Mr_Dafoe } from "next/font/google";
+import {
+  Inter,
+  Fraunces,
+  JetBrains_Mono,
+  Mr_Dafoe,
+  Special_Elite,
+} from "next/font/google";
 import "@livekit/components-styles";
 import "./globals.css";
 
@@ -32,6 +38,14 @@ const mrDafoe = Mr_Dafoe({
   display: "swap",
 });
 
+// Court reporter typewriter face — StenoBox body text.
+const specialElite = Special_Elite({
+  variable: "--font-typewriter",
+  subsets: ["latin"],
+  weight: ["400"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Harvey — Counsel On Demand",
   description:
@@ -44,7 +58,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${fraunces.variable} ${jetbrains.variable} ${mrDafoe.variable} h-full antialiased`}
+      className={`${inter.variable} ${fraunces.variable} ${jetbrains.variable} ${mrDafoe.variable} ${specialElite.variable} h-full antialiased`}
     >
       <body className="min-h-full">{children}</body>
     </html>

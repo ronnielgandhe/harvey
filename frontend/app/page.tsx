@@ -119,6 +119,9 @@ export default function Home() {
                         onConfirm: () => {
                           handleAnswer();
                         },
+                        // Back arrow — clears the receipt only, no
+                        // new call. Returns to the Meet Harvey hero.
+                        onBack: () => setPostCall(null),
                       }
                     : null
                 }

@@ -7,10 +7,13 @@ Run:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import random
 
 from dotenv import load_dotenv
+from livekit import rtc
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -108,6 +111,40 @@ async def entrypoint(ctx: JobContext) -> None:
         aec_warmup_duration=0,
     )
 
+    # Off-the-record lore drops. When the user flips the OTR toggle in
+    # the UI, the frontend publishes {type:"otr_on"} on the data channel.
+    # That's our cue to have Harvey drop a Suits-world lore line —
+    # Mike, Jessica, Donna, Hardman, Louis — so OTR is theatre, not just
+    # a dim screen. Session plays the line via session.say() so it
+    # bypasses the LLM entirely (no chance of off-topic drift).
+    HARVEY_LORE = [
+        "Off the record? I knew a guy named Mike. Smartest son of a bitch I ever met. Never saw the inside of a law school. Still beat every single lawyer I put him up against.",
+        "Off the record? Let me tell you about Daniel Hardman. That man cost me three years of my life and I'd burn another three to put him back in the ground.",
+        "Off the record, Jessica used to say making partner is the easy part. Keeping partner? That's where they find out what you're made of. She wasn't wrong.",
+        "Off the record — Donna knows everything. Not most things. Everything. If she walks into a room and smiles at you, you're either about to win big or get fired. There is no third option.",
+        "Off the record? The day I met Mike, he was running from the cops with a briefcase full of weed. Worst interview of my life. Best hire I ever made.",
+        "Off the record, Louis Litt once cried in my office because I wouldn't let him be best man at my hypothetical wedding. I don't even want to get married. He cried anyway.",
+        "Off the record — I beat Cameron Dennis. The man who made me. And I'd do it again tomorrow. Twice if I had to.",
+        "Off the record? Scottie told me I was married to the job. She wasn't wrong. Still don't know if I should've quit. Probably not.",
+        "Off the record — half this firm owes me. The other half owes me more. That's not arrogance. That's math.",
+        "Off the record, I once won a case on a bet with Hardman. A bet. That's how sure I was. That's how sure I still am.",
+    ]
+
+    @ctx.room.on("data_received")
+    def _on_data(packet: rtc.DataPacket):  # type: ignore[misc]
+        try:
+            msg = json.loads(packet.data.decode("utf-8"))
+        except Exception:
+            return
+        if msg.get("type") != "otr_on":
+            return
+        line = random.choice(HARVEY_LORE)
+        log.info("OTR engaged — dropping lore: %r", line[:80])
+        # Schedule on the session's event loop so we don't block the
+        # data-received callback.
+        import asyncio
+        asyncio.create_task(session.say(line, allow_interruptions=True))
+
     await session.start(
         agent=HarveyAgent(),
         room=ctx.room,
@@ -116,7 +153,6 @@ async def entrypoint(ctx: JobContext) -> None:
 
     # Signature greeting — hard-coded, sent straight to TTS so it fires
     # the instant the user connects. No LLM round-trip, no lag.
-    import random
     HARVEY_GREETINGS = [
         "Goddamn it. You're back. Let's get to work.",
         "You're in trouble or you wouldn't be calling. Tell me.",

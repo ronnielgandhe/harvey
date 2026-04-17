@@ -6,16 +6,15 @@ import {
   RoomAudioRenderer,
   useDataChannel,
   useLocalParticipant,
-  useMultibandTrackVolume,
   useVoiceAssistant,
 } from "@livekit/components-react";
 import { Ear, Loader2, MessageSquare, PhoneOff } from "lucide-react";
-import { LocalAudioTrack, Track } from "livekit-client";
 import { BluejayPinwheel } from "./BluejayPinwheel";
 import { GlassPaneStack, type Pane, type SeeAlsoItem } from "./GlassPaneStack";
 import { OffTheRecord } from "./OffTheRecord";
 import { CaseReceipt, type ReceiptCounts } from "./CaseReceipt";
 import { LiveIndicator } from "./PearsonHeader";
+import { StenoBox } from "./StenoBox";
 
 interface Props {
   /** Called when the user ends the call. Carries the billing context
@@ -43,31 +42,6 @@ function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/**
- * Subscribes to the local participant's microphone and returns a 6-band
- * volume array (0..1 each). Feeds the BluejayPinwheel's "wings" so they
- * react to the user's voice.
- */
-function useLocalMicBands(): number[] {
-  const { localParticipant, microphoneTrack } = useLocalParticipant();
-  // `useMultibandTrackVolume` wants a concrete LocalAudioTrack (or a
-  // TrackReference). The microphone publication's track is a LocalTrack
-  // union, so narrow to LocalAudioTrack when present.
-  const rawTrack =
-    microphoneTrack?.track ??
-    localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
-  const audioTrack =
-    rawTrack instanceof LocalAudioTrack ? rawTrack : undefined;
-
-  const bands = useMultibandTrackVolume(audioTrack, {
-    bands: 6,
-    loPass: 150,
-    hiPass: 8000,
-    updateInterval: 32,
-  });
-  return bands ?? [];
-}
-
 // Safer transcript hook — LiveKit exposes these on the voice-assistant.
 function useTranscriptionsSafe() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,9 +66,13 @@ export function CallInterface({ onEnd }: Props) {
   });
   const [otr, setOtr] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
-  const micBands = useLocalMicBands();
+  // Pane Harvey has voice-expanded — rendered as a centered overlay
+  // above the lane stacks. Clearing it (ESC, click-out, "dismiss")
+  // returns the pane to its normal lane slot.
+  const [focusedPaneId, setFocusedPaneId] = useState<string | null>(null);
   const { state: vaState } = useVoiceAssistant();
   const { agent, user } = useTranscriptionsSafe();
+  const { localParticipant } = useLocalParticipant();
 
   // ─── Call timer with pause support ────────────────────────────────────
   // `startTime` fixed at mount, `pausedMs` accumulates while OTR active.
@@ -120,10 +98,21 @@ export function CallInterface({ onEnd }: Props) {
         return false;
       } else {
         setPauseStartedAt(Date.now());
+        // Off-the-record activated — kick a "drop lore" signal to the
+        // agent. Backend picks a Suits-flavored Mike/Jessica/Donna line
+        // and Harvey speaks it so OTR is actually theatre, not just dim.
+        if (localParticipant) {
+          const payload = new TextEncoder().encode(
+            JSON.stringify({ type: "otr_on" }),
+          );
+          localParticipant.publishData(payload, { reliable: true }).catch(
+            (err) => console.warn("[Harvey] otr publish failed", err),
+          );
+        }
         return true;
       }
     });
-  }, [pauseStartedAt]);
+  }, [pauseStartedAt, localParticipant]);
 
   const elapsedSec = useMemo(() => {
     const effective =
@@ -149,18 +138,6 @@ export function CallInterface({ onEnd }: Props) {
         return "Standby";
     }
   }, [vaState]);
-
-  // Latest ticker line (newest of agent/user)
-  const ticker = useMemo(() => {
-    const lastAgent = agent[agent.length - 1];
-    const lastUser = user[user.length - 1];
-    const aT = lastAgent?.firstReceivedTime ?? 0;
-    const uT = lastUser?.firstReceivedTime ?? 0;
-    if (!lastAgent && !lastUser) return null;
-    if (aT >= uT)
-      return { who: "Harvey" as const, text: lastAgent?.text ?? "" };
-    return { who: "You" as const, text: lastUser?.text ?? "" };
-  }, [agent, user]);
 
   // ─── Data channel listener — panes only, no evidence wall / memo ────────
   useDataChannel((msg) => {
@@ -207,6 +184,12 @@ export function CallInterface({ onEnd }: Props) {
                 fullText: payload.full_text
                   ? String(payload.full_text)
                   : undefined,
+                frenchQuote: payload.french_quote
+                  ? String(payload.french_quote)
+                  : undefined,
+                frenchFullText: payload.french_full_text
+                  ? String(payload.french_full_text)
+                  : undefined,
                 confidence:
                   typeof payload.confidence === "number"
                     ? payload.confidence
@@ -249,17 +232,32 @@ export function CallInterface({ onEnd }: Props) {
       ]);
       setCounts((c) => ({ ...c, hill: c.hill + 1 }));
     } else if (type === "article_spotlight") {
+      const spotlightItemsRaw = Array.isArray(payload.items)
+        ? (payload.items as unknown[])
+        : [];
+      const spotlightItems = spotlightItemsRaw.map((raw) => {
+        const o = raw as Record<string, unknown>;
+        return {
+          title: String(o.title ?? ""),
+          source: String(o.source ?? ""),
+          published: String(o.published ?? ""),
+          link: String(o.link ?? ""),
+          summary: String(o.summary ?? ""),
+        };
+      });
       setPanes((prev) => [
         {
           kind: "article_spotlight",
           id: uid("spot"),
           data: {
             query: String(payload.query ?? ""),
-            title: String(payload.title ?? ""),
-            source: String(payload.source ?? ""),
-            published: String(payload.published ?? ""),
-            link: String(payload.link ?? ""),
-            summary: String(payload.summary ?? ""),
+            items: spotlightItems,
+            // Legacy single-item fallback so old payload shape still renders.
+            title: payload.title ? String(payload.title) : undefined,
+            source: payload.source ? String(payload.source) : undefined,
+            published: payload.published ? String(payload.published) : undefined,
+            link: payload.link ? String(payload.link) : undefined,
+            summary: payload.summary ? String(payload.summary) : undefined,
           },
         },
         ...prev,
@@ -307,7 +305,6 @@ export function CallInterface({ onEnd }: Props) {
             message: payload.message ? String(payload.message) : undefined,
           },
         },
-        ...prev,
       ]);
       setCounts((c) => ({ ...c, stocks: c.stocks + 1 }));
     } else if (type === "news_ticker") {
@@ -349,6 +346,73 @@ export function CallInterface({ onEnd }: Props) {
       setTimeout(() => {
         setPanes((prev) => prev.filter((p) => p.id !== id));
       }, ttl);
+    } else if (type === "pane_action") {
+      // Voice-driven screen control. Harvey calls `manage_screen(action,
+      // target)` on the backend; that publishes this event. We filter
+      // the pane list by target and apply the action.
+      const action = String(payload.action ?? "").toLowerCase();
+      const target = String(payload.target ?? "").toLowerCase();
+      const kindForTarget: Record<string, Pane["kind"][]> = {
+        stock: ["stock_card"],
+        stocks: ["stock_card"],
+        hill: ["hill_intel"],
+        statute: ["statute"],
+        statutes: ["statute"],
+        news: ["news_ticker", "article_spotlight"],
+        articles: ["news_ticker", "article_spotlight"],
+      };
+
+      const match = (p: Pane): boolean => {
+        if (p.kind === "tool_call") return false;
+        if (target === "all" || target === "everything") return true;
+        if (target === "last") return false; // handled below
+        const kinds = kindForTarget[target];
+        if (kinds && kinds.includes(p.kind)) return true;
+        // Ticker-symbol match against stock + hill
+        const upper = target.toUpperCase();
+        if (p.kind === "stock_card" && p.data.symbol?.toUpperCase() === upper)
+          return true;
+        if (p.kind === "hill_intel" && p.data.ticker?.toUpperCase() === upper)
+          return true;
+        return false;
+      };
+
+      if (action === "dismiss" || action === "clear" || action === "remove") {
+        // Clear focused pane too if it's the one being dismissed.
+        setFocusedPaneId(null);
+        setPanes((prev) => {
+          if (target === "last") return prev.slice(1);
+          if (action === "clear" || target === "all" || target === "everything") {
+            return prev.filter((p) => p.kind === "tool_call");
+          }
+          return prev.filter((p) => !match(p));
+        });
+      } else if (
+        action === "expand" ||
+        action === "highlight" ||
+        action === "focus" ||
+        action === "open"
+      ) {
+        // Find the newest pane that matches and promote it to focus.
+        setPanes((prev) => {
+          const found = prev.find((p) => match(p));
+          if (found) setFocusedPaneId(found.id);
+          return prev;
+        });
+      } else if (action === "collapse" || action === "close") {
+        setFocusedPaneId(null);
+      }
+    } else if (type === "end_call") {
+      // Voice-driven hang-up. Harvey just said a goodbye line; we flash
+      // the invoice for a beat so the user can skim the bill, then
+      // auto-confirm. 1.8s gives enough time to read the numbers
+      // without making it feel hung. The confirm handler pops us back
+      // to the idle page with the compact post-call receipt on the
+      // left and the "Call again" button on the right.
+      setReceiptOpen(true);
+      setTimeout(() => {
+        onEnd({ durationSec: elapsedSec, counts });
+      }, 1800);
     }
     // Legacy event types (draft_response, negotiation_play, case_file_update,
     // open_resource, ask_user, action_checklist) are ignored — those tools
@@ -395,17 +459,25 @@ export function CallInterface({ onEnd }: Props) {
   }, [onEnd, elapsedSec, counts]);
   const handleReceiptCancel = useCallback(() => setReceiptOpen(false), []);
 
-  // ESC toggles the confirm receipt — first press opens, second closes.
+  // ESC closes focused pane first, then toggles confirm receipt.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (receiptOpen) setReceiptOpen(false);
-        else setReceiptOpen(true);
+      if (e.key !== "Escape") return;
+      if (focusedPaneId) {
+        setFocusedPaneId(null);
+        return;
       }
+      if (receiptOpen) setReceiptOpen(false);
+      else setReceiptOpen(true);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [receiptOpen]);
+  }, [receiptOpen, focusedPaneId]);
+
+  const focusedPane = useMemo(
+    () => panes.find((p) => p.id === focusedPaneId) ?? null,
+    [panes, focusedPaneId],
+  );
 
   return (
     <div className="relative min-h-screen">
@@ -414,16 +486,26 @@ export function CallInterface({ onEnd }: Props) {
       {/* Dimming wrapper — OTR active = desaturated. The OTR overlay,
           receipt, and LiveIndicator sit OUTSIDE this so they stay crisp. */}
       <div className={otr ? "otr-dim" : ""}>
-        {/* Centered audio-reactive Bluejay pinwheel — this IS the voice. */}
+        {/* Centered audio-reactive Bluejay pinwheel — this IS the voice.
+            When Harvey expands a pane, the pinwheel shrinks + drops
+            below the focused card so you can see it still spinning. */}
         <div className="pointer-events-none fixed inset-0 flex items-center justify-center">
           <motion.div
             initial={{ opacity: 0, scale: 0.82 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.9, delay: 0.25, ease: [0.19, 1, 0.22, 1] }}
+            animate={{
+              opacity: 1,
+              scale: focusedPaneId ? 0.26 : 1,
+              y: focusedPaneId ? 340 : 0,
+            }}
+            transition={{
+              opacity: { duration: 0.6, delay: 0.25 },
+              scale: { duration: 0.55, ease: [0.19, 1, 0.22, 1] },
+              y: { duration: 0.55, ease: [0.19, 1, 0.22, 1] },
+            }}
+            style={{ zIndex: focusedPaneId ? 55 : 1 }}
           >
             <BluejayPinwheel
               size={320}
-              micBands={micBands}
               pulse={vaState === "speaking"}
             />
           </motion.div>
@@ -437,10 +519,12 @@ export function CallInterface({ onEnd }: Props) {
           panes={panes}
           onDismiss={handleDismiss}
           onSeeAlsoClick={handleSeeAlsoClick}
+          focusedId={focusedPaneId}
+          hideFocused
         />
 
-        {/* Live transcript ticker */}
-        <TickerLine ticker={ticker} />
+        {/* Live court-reporter transcript box — bottom-right, above LIVE pill */}
+        <StenoBox agent={agent} user={user} startMs={startTime} />
 
         {/* End call button — bottom center */}
         <motion.div
@@ -471,8 +555,136 @@ export function CallInterface({ onEnd }: Props) {
         durationSec={elapsedSec}
         counts={counts}
       />
+
+      {/* Focused-pane overlay — when Harvey "expands" a pane it flies
+          to the center and scales up for reading. Click-out or ESC
+          returns it to its lane. */}
+      <FocusedPaneOverlay
+        pane={focusedPane}
+        onSeeAlsoClick={handleSeeAlsoClick}
+        onClose={() => setFocusedPaneId(null)}
+      />
     </div>
   );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// FocusedPaneOverlay — voice-driven "expand" target. Harvey says "expand
+// the Apple card" → backend fires manage_screen(expand, AAPL) → the
+// matching pane flies to the center, scales up, and shows its fullest
+// form (statutes expand their full text; stock cards get a bigger body;
+// hill intel shows every row). Scrim + ESC + click-out all dismiss.
+// ────────────────────────────────────────────────────────────────────────
+function FocusedPaneOverlay({
+  pane,
+  onClose,
+  onSeeAlsoClick,
+}: {
+  pane: Pane | null;
+  onClose: () => void;
+  onSeeAlsoClick?: (item: SeeAlsoItem) => void;
+}) {
+  return (
+    <AnimatePresence>
+      {pane && (
+        <motion.div
+          key="focus-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.25 }}
+          className="fixed inset-0 z-50 overflow-y-auto"
+        >
+          {/* Scrim — kept light so the pinwheel spinning at the bottom
+              stays visible. Click closes. Lives under the card in a
+              separate z layer so scroll gestures on the card still
+              propagate to the overlay scroll container. */}
+          <motion.div
+            onClick={onClose}
+            className="fixed inset-0 bg-[rgba(248,246,241,0.55)]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+          />
+
+          {/* Card layer. The outer flex uses items-start with top +
+              bottom padding so tall cards (stock fundamentals, full
+              statute) can scroll naturally within the overlay — they
+              don't get clipped by the viewport like they would under
+              items-center. pb-[34vh] reserves space below the card
+              so the shrunk pinwheel spinning at the bottom of the
+              screen doesn't hide any content. */}
+          <div
+            className="relative flex min-h-full w-full justify-center px-6 pt-[8vh] pb-[34vh]"
+            style={{ pointerEvents: "none" }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 6 }}
+              transition={{ duration: 0.35, ease: [0.19, 1, 0.22, 1] }}
+              className="w-full max-w-[620px]"
+              style={{ pointerEvents: "auto" }}
+            >
+              <FocusedPaneBody
+                pane={pane}
+                onSeeAlsoClick={onSeeAlsoClick}
+                onClose={onClose}
+              />
+            </motion.div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// Dynamic import from GlassPaneStack so we can reuse the existing pane
+// card components without duplicating. Kept inline as a small render
+// switch — each pane gets its "expanded" props where applicable.
+import { StatutePaneCard } from "./GlassPaneStack";
+import { NewsTickerPane } from "./panes/NewsTickerPane";
+import { ArticleSpotlightPane } from "./panes/ArticleSpotlightPane";
+import { StockCardPane } from "./panes/StockCardPane";
+import { HillIntelPane } from "./panes/HillIntelPane";
+
+function FocusedPaneBody({
+  pane,
+  onSeeAlsoClick,
+  onClose,
+}: {
+  pane: Pane;
+  onSeeAlsoClick?: (item: SeeAlsoItem) => void;
+  onClose: () => void;
+}) {
+  switch (pane.kind) {
+    case "statute":
+      // Force the "fullText + see-also pills" expanded state by
+      // synthesizing a pane whose quote IS the full text.
+      return (
+        <StatutePaneCard
+          pane={{
+            ...pane,
+            quote: pane.fullText || pane.quote,
+          }}
+          onDismiss={onClose}
+          onSeeAlsoClick={onSeeAlsoClick}
+        />
+      );
+    case "news_ticker":
+      return <NewsTickerPane data={pane.data} paneId={pane.id} onDismiss={onClose} />;
+    case "article_spotlight":
+      return (
+        <ArticleSpotlightPane data={pane.data} paneId={pane.id} onDismiss={onClose} />
+      );
+    case "stock_card":
+      return <StockCardPane data={pane.data} paneId={pane.id} onDismiss={onClose} />;
+    case "hill_intel":
+      return <HillIntelPane data={pane.data} paneId={pane.id} onDismiss={onClose} />;
+    default:
+      return null;
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -515,46 +727,3 @@ function StatusHUD({ state, label }: { state: string; label: string }) {
   );
 }
 
-// ────────────────────────────────────────────────────────────────────────
-// Ticker line — latest transcript entry under the pinwheel. Truncated,
-// italic, with a "You"/"Harvey" label prefix.
-// ────────────────────────────────────────────────────────────────────────
-function TickerLine({
-  ticker,
-}: {
-  ticker: { who: "You" | "Harvey"; text: string } | null;
-}) {
-  return (
-    <div className="pointer-events-none fixed bottom-24 left-1/2 z-30 w-full max-w-[720px] -translate-x-1/2 px-6">
-      <AnimatePresence mode="wait">
-        {ticker ? (
-          <motion.div
-            key={ticker.text}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.35 }}
-            className="flex items-baseline justify-center gap-3 text-center"
-          >
-            <span className="font-mono text-[9px] uppercase tracking-[0.32em] text-[var(--accent)]">
-              {ticker.who}
-            </span>
-            <span className="ticker-line truncate text-[15px] italic text-[var(--foreground-muted)]">
-              {ticker.text}
-            </span>
-          </motion.div>
-        ) : (
-          <motion.span
-            key="idle"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="block text-center font-mono text-[10px] uppercase tracking-[0.42em] text-[var(--foreground-faint)]"
-          >
-            Speak when ready
-          </motion.span>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
