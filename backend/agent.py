@@ -165,6 +165,25 @@ async def entrypoint(ctx: JobContext) -> None:
     await session.say(random.choice(HARVEY_GREETINGS), allow_interruptions=True)
 
 
+def prewarm(proc) -> None:
+    """Warm expensive singletons in each worker BEFORE jobs arrive.
+
+    Chroma's Rust bindings have an internal connection pool. If the pool
+    is cold-started inside a live tool call (audio + TTS + LLM all running),
+    it times out waiting for a thread and leaves the RustBindingsAPI in a
+    broken state — every subsequent cite_statute then 500s with
+    'RustBindingsAPI object has no attribute bindings'.
+    Forcing init here while the process is idle makes the first real
+    cite_statute call land on an already-warm client.
+    """
+    try:
+        from rag import get_rag
+        get_rag()
+        log.info("prewarm: RAG ready")
+    except Exception as e:  # pragma: no cover
+        log.warning("prewarm: RAG failed to load: %s", e)
+
+
 def main() -> None:
     # Default init timeout is 10s which is too tight once torch + chroma
     # + legal prompt import all happen during cold start. Bump to 60s
@@ -172,6 +191,7 @@ def main() -> None:
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
+            prewarm_fnc=prewarm,
             initialize_process_timeout=60,
         )
     )
