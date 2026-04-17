@@ -106,7 +106,10 @@ async def entrypoint(ctx: JobContext) -> None:
             temperature=0.7,
         ),
         tts=elevenlabs.TTS(**tts_kwargs),
-        vad=silero.VAD.load(),
+        # Reuse the prewarmed VAD from prewarm_fnc. Falls back to
+        # loading on-demand if for any reason userdata didn't cache one
+        # (e.g. dev mode without prewarm).
+        vad=ctx.proc.userdata.get("vad") or silero.VAD.load(),
         turn_detection=turn_detection,
         aec_warmup_duration=0,
     )
@@ -165,8 +168,20 @@ async def entrypoint(ctx: JobContext) -> None:
     await session.say(random.choice(HARVEY_GREETINGS), allow_interruptions=True)
 
 
+def prewarm(proc):
+    """Runs once per agent process at startup — BEFORE any job is
+    accepted. Preloads Silero VAD (torch model) and the RAG Chroma
+    index so the first job doesn't eat a 10s init timeout."""
+    proc.userdata["vad"] = silero.VAD.load()
+    try:
+        from rag import get_rag
+        get_rag()  # Open the Chroma DB + warm the embedding client.
+    except Exception:
+        pass
+
+
 def main() -> None:
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
 
 
 if __name__ == "__main__":
