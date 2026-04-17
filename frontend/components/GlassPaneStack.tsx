@@ -13,15 +13,6 @@ import {
   Check,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import {
-  OpenResourcePane,
-  type OpenResourceData,
-} from "./panes/OpenResourcePane";
-import { AskUserPane, type AskUserData } from "./panes/AskUserPane";
-import {
-  ActionChecklistPane,
-  type ActionChecklistData,
-} from "./panes/ActionChecklistPane";
 import { NewsTickerPane, type NewsTickerData } from "./panes/NewsTickerPane";
 import {
   ArticleSpotlightPane,
@@ -35,13 +26,7 @@ import { StockCardPane, type StockCardData } from "./panes/StockCardPane";
 
 export type Pane =
   | StatutePane
-  | CaseUpdatePane
-  | DraftPane
-  | PlayPane
   | ToolCallPane
-  | OpenResourcePane
-  | AskUserPaneType
-  | ActionChecklistPaneType
   | NewsTickerPaneType
   | ArticleSpotlightPaneType
   | StockCardPaneType;
@@ -55,56 +40,11 @@ export interface StatutePane {
   quote: string;
 }
 
-export interface CaseUpdatePane {
-  kind: "case_update";
-  id: string;
-  field: string;
-  value: string;
-}
-
-export interface DraftPane {
-  kind: "draft";
-  id: string;
-  recipient?: string;
-  tones?: string[];
-  body: string;
-}
-
-export interface PlayStep {
-  label: string;
-  body: string;
-}
-
-export interface PlayPane {
-  kind: "play";
-  id: string;
-  title: string;
-  steps: PlayStep[];
-}
-
 export interface ToolCallPane {
   kind: "tool_call";
   id: string;
   name: string;
   status: "running" | "complete" | "error" | string;
-}
-
-export interface OpenResourcePane {
-  kind: "open_resource";
-  id: string;
-  data: OpenResourceData;
-}
-
-export interface AskUserPaneType {
-  kind: "ask_user";
-  id: string;
-  data: AskUserData;
-}
-
-export interface ActionChecklistPaneType {
-  kind: "action_checklist";
-  id: string;
-  data: ActionChecklistData;
 }
 
 export interface NewsTickerPaneType {
@@ -214,26 +154,6 @@ function PaneCard({ pane, onDismiss }: { pane: Pane; onDismiss?: (id: string) =>
   switch (pane.kind) {
     case "statute":
       return <StatutePaneCard pane={pane} onDismiss={onDismiss} />;
-    case "case_update":
-      return <CaseUpdateCard pane={pane} onDismiss={onDismiss} />;
-    case "draft":
-      return <DraftCard pane={pane} onDismiss={onDismiss} />;
-    case "play":
-      return <PlayCard pane={pane} onDismiss={onDismiss} />;
-    case "open_resource":
-      return (
-        <OpenResourcePane data={pane.data} paneId={pane.id} onDismiss={onDismiss} />
-      );
-    case "ask_user":
-      return <AskUserPane data={pane.data} paneId={pane.id} onDismiss={onDismiss} />;
-    case "action_checklist":
-      return (
-        <ActionChecklistPane
-          data={pane.data}
-          paneId={pane.id}
-          onDismiss={onDismiss}
-        />
-      );
     case "news_ticker":
       return (
         <NewsTickerPane data={pane.data} paneId={pane.id} onDismiss={onDismiss} />
@@ -392,155 +312,6 @@ function StatutePaneCard({
           </div>
         </>
       )}
-    </GlassShell>
-  );
-}
-
-// ─── Case file update — TINY pill ──────────────────────────────────────────
-
-function CaseUpdateCard({
-  pane,
-  onDismiss,
-}: {
-  pane: CaseUpdatePane;
-  onDismiss?: (id: string) => void;
-}) {
-  return (
-    <GlassShell variant="compact">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <FileText className="h-3 w-3 shrink-0 text-[var(--accent)]" strokeWidth={1.75} />
-          <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.28em] text-[var(--foreground-faint)]">
-            {pane.field.replace(/_/g, " ")}
-          </span>
-          <span className="text-[var(--foreground-faint)]">·</span>
-          <span className="truncate font-display text-[13px] leading-snug text-[var(--foreground)]">
-            {pane.value}
-          </span>
-        </div>
-        {onDismiss && (
-          <button
-            onClick={() => onDismiss(pane.id)}
-            className="-mr-1 shrink-0 rounded p-1 text-[var(--foreground-faint)] transition-colors hover:bg-[rgba(0,0,0,0.04)] hover:text-[var(--foreground)]"
-            aria-label="Dismiss"
-          >
-            <X className="h-3 w-3" strokeWidth={1.75} />
-          </button>
-        )}
-      </div>
-    </GlassShell>
-  );
-}
-
-// ─── Draft / Letter ────────────────────────────────────────────────────────
-
-function DraftCard({
-  pane,
-  onDismiss,
-}: {
-  pane: DraftPane;
-  onDismiss?: (id: string) => void;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(pane.body);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // ignore
-    }
-  };
-
-  return (
-    <GlassShell>
-      <HeaderRow
-        icon={<Mail className="h-3.5 w-3.5 text-[var(--accent)]" strokeWidth={1.75} />}
-        badge="DRAFT"
-        label={pane.recipient ? `to ${pane.recipient}` : undefined}
-        onDismiss={onDismiss}
-        paneId={pane.id}
-      />
-      {pane.tones && pane.tones.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {pane.tones.map((tone) => (
-            <span
-              key={tone}
-              className="rounded-full border border-[var(--rule-strong)] bg-[var(--background-elev)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.22em] text-[var(--foreground-muted)]"
-            >
-              {tone}
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="thin-scroll mt-3 max-h-[260px] overflow-y-auto rounded-md border border-[var(--rule)] bg-[var(--paper)] p-3 font-display text-[13px] leading-[1.6] text-[var(--foreground)] whitespace-pre-wrap">
-        {pane.body}
-      </div>
-      <div className="mt-3 flex items-center justify-between">
-        <span className="font-mono text-[9px] uppercase tracking-[0.3em] text-[var(--foreground-faint)]">
-          Draft · Privileged
-        </span>
-        <button
-          onClick={onCopy}
-          className="flex items-center gap-1.5 rounded-md border border-[var(--accent)]/40 bg-[var(--accent-soft)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/15"
-        >
-          {copied ? (
-            <>
-              <Check className="h-3 w-3" strokeWidth={2} /> Copied
-            </>
-          ) : (
-            <>
-              <Copy className="h-3 w-3" strokeWidth={2} /> Copy
-            </>
-          )}
-        </button>
-      </div>
-    </GlassShell>
-  );
-}
-
-// ─── Negotiation play ──────────────────────────────────────────────────────
-
-function PlayCard({
-  pane,
-  onDismiss,
-}: {
-  pane: PlayPane;
-  onDismiss?: (id: string) => void;
-}) {
-  return (
-    <GlassShell>
-      <HeaderRow
-        icon={<Swords className="h-3.5 w-3.5 text-[var(--accent)]" strokeWidth={1.75} />}
-        badge="PLAY"
-        label={pane.title}
-        onDismiss={onDismiss}
-        paneId={pane.id}
-      />
-      <ol className="mt-3 space-y-2.5">
-        {pane.steps.map((step, i) => (
-          <motion.li
-            key={i}
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.08 + 0.1, duration: 0.3 }}
-            className="flex gap-3 rounded-md border border-[var(--rule)] bg-[var(--background-elev)] p-2.5"
-          >
-            <span className="font-mono text-[11px] tabular-nums text-[var(--accent)]">
-              {String(i + 1).padStart(2, "0")}
-            </span>
-            <div className="flex-1">
-              <div className="font-display text-[14px] tracking-tight text-[var(--foreground)]">
-                {step.label}
-              </div>
-              <p className="mt-1 text-[12px] leading-relaxed text-[var(--foreground-muted)]">
-                {step.body}
-              </p>
-            </div>
-          </motion.li>
-        ))}
-      </ol>
     </GlassShell>
   );
 }
