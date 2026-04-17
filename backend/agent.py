@@ -188,11 +188,15 @@ def main() -> None:
     # Default init timeout is 10s which is too tight once torch + chroma
     # + legal prompt import all happen during cold start. Bump to 60s
     # so the worker has headroom on slow first spawns.
+    # num_idle_processes=1 so only ONE worker opens Chroma's SQLite at a
+    # time — concurrent opens exhaust Chroma's Rust connection pool and
+    # leave the bindings in a half-initialized, unrecoverable state.
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
             initialize_process_timeout=60,
+            num_idle_processes=1,
         )
     )
 

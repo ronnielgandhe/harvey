@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -84,7 +85,33 @@ _INSTANCE: Optional[LegalRAG] = None
 
 
 def get_rag() -> LegalRAG:
+    """Return the shared RAG instance, retrying init on failure.
+
+    Chroma's Rust bindings have a connection pool that times out if
+    multiple worker processes try to open the same persist dir at once.
+    On pool timeout the RustBindingsAPI ends up half-initialized
+    ('RustBindingsAPI object has no attribute bindings') and the Python
+    constructor raises. DON'T cache that broken state — retry with
+    backoff so the next call has a shot at a healthy client.
+    """
     global _INSTANCE
-    if _INSTANCE is None:
-        _INSTANCE = LegalRAG()
-    return _INSTANCE
+    if _INSTANCE is not None:
+        return _INSTANCE
+
+    last_exc: Optional[Exception] = None
+    for attempt in range(5):
+        try:
+            _INSTANCE = LegalRAG()
+            return _INSTANCE
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                "LegalRAG init failed (attempt %d/5): %s",
+                attempt + 1,
+                exc,
+            )
+            # Back off so the pool / SQLite file has time to settle.
+            time.sleep(1.0 + attempt * 1.5)
+
+    assert last_exc is not None
+    raise last_exc
