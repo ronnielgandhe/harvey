@@ -173,28 +173,18 @@ def get_rag() -> LegalRAG:
     if _INSTANCE is not None:
         return _INSTANCE
 
-    last_exc: Optional[Exception] = None
-    for attempt in range(4):
-        try:
-            with _init_lock():
-                # Re-check inside the lock: another call might have
-                # populated _INSTANCE while we waited on the flock.
-                if _INSTANCE is not None:
-                    return _INSTANCE
-                _INSTANCE = LegalRAG()
+    # ONE attempt with a real timeout. chromadb's Rust pool has its
+    # own ~30s timeout on cold-start; retrying just burns more time.
+    # If it genuinely can't open in 90s something is fundamentally
+    # wrong — better to fail fast and let the LLM try again on the
+    # next user turn than to eat 4 × 30s = 2 minutes of dead air.
+    try:
+        with _init_lock():
+            if _INSTANCE is not None:
                 return _INSTANCE
-        except Exception as exc:
-            last_exc = exc
-            logger.warning(
-                "LegalRAG init failed (attempt %d/4): %s",
-                attempt + 1,
-                exc,
-            )
-            # Critical: clear chromadb's poisoned module cache before
-            # retrying, or attempt N+1 will crash on the same dangling
-            # half-initialized Rust client from attempt N.
-            _reset_chromadb_caches()
-            time.sleep(1.5 + attempt * 1.5)
-
-    assert last_exc is not None
-    raise last_exc
+            _INSTANCE = LegalRAG()
+            return _INSTANCE
+    except Exception as exc:
+        logger.error("LegalRAG init failed: %s", exc)
+        _reset_chromadb_caches()
+        raise

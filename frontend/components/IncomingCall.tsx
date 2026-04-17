@@ -55,7 +55,12 @@ export function IncomingCall({ onAnswer, loading, error, postCall }: Props) {
             key="post-call"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            // Snappy exit on BACK — the old 0.45s + idle-enter 0.1s
+            // delay was hiding the phone behind the fading receipt
+            // for ~half a second, reading as a long pause. 0.2s exit
+            // + 0-delay idle enter = the phone is visible almost
+            // immediately after BACK is clicked.
+            exit={{ opacity: 0, transition: { duration: 0.2 } }}
             transition={{ duration: 0.45, ease: [0.19, 1, 0.22, 1] }}
             className="grid w-full max-w-[1200px] grid-cols-1 items-center gap-14 px-8 pt-[52vh] md:grid-cols-[1fr_1fr] md:gap-20"
           >
@@ -113,17 +118,17 @@ export function IncomingCall({ onAnswer, loading, error, postCall }: Props) {
             </motion.div>
           </motion.div>
         ) : (
-          // IDLE: phone dead-center. Short delay so the post-call
-          // pieces start fading BEFORE the phone pops back in, but
-          // not so long that the user feels a pause after BACK.
+          // IDLE: phone dead-center. No entry delay — we want the
+          // phone visible the instant the user clicks BACK. Post-call
+          // fades out in 0.2s (see exit transition above), phone
+          // fades in simultaneously over 0.3s. No dead air.
           <motion.div
             key="idle"
-            initial={{ opacity: 0, scale: 0.94, y: 6 }}
+            initial={{ opacity: 0, scale: 0.96, y: 4 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{
-              duration: 0.35,
-              delay: 0.1,
+              duration: 0.3,
               ease: [0.22, 0.9, 0.25, 1],
             }}
             className="flex flex-col items-center gap-3 pt-[52vh]"

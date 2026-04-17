@@ -12,7 +12,7 @@ import {
   X,
   Check,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NewsTickerPane, type NewsTickerData } from "./panes/NewsTickerPane";
 import {
   ArticleSpotlightPane,
@@ -515,11 +515,81 @@ export function StatutePaneCard({
 }
 
 // ─── Highlighted quote ────────────────────────────────────────────────────
-// The blockquote that wraps retrieved statute text, with a one-shot
-// yellow "highlighter" sweep that passes left-to-right across the
-// quote on mount. After the sweep finishes a faint persistent yellow
-// tint stays behind the text so the caller can see at a glance which
-// passage Harvey is actually pointing at.
+// The blockquote that wraps retrieved statute text. Instead of a full-body
+// yellow wash, we identify the KEY LEGAL PHRASES a lawyer would actually
+// mark with a highlighter — dollar amounts, prison terms, speeds, section
+// numbers, operative verbs ("shall", "guilty", "liable"), and penalty
+// words ("fine", "imprisonment", "suspension"). Each match gets its own
+// mini "highlighter stroke" animation: a yellow background fades in over
+// just that span with a slight stagger so the eye tracks from one marked
+// phrase to the next. Feels like watching someone mark up a statute in
+// real time, not a wash of yellow over the whole block.
+
+// One ordered regex list. Earlier entries win when they overlap (matches
+// that partially cover later patterns are preserved). Order matters —
+// multi-word phrases come first so single-word overlaps don't split them.
+const HIGHLIGHT_PATTERNS: RegExp[] = [
+  // Section / subsection references: "section 172", "s. 172(1)", "subsection (2)"
+  /\b(?:sub)?section\s+\d+(?:\.\d+)?(?:\s*\(\d+\))?\b/gi,
+  /\bs\.\s*\d+(?:\.\d+)?(?:\s*\(\d+\))?\b/gi,
+  // Dollar amounts: $10,000 / $10000 / $5 million
+  /\$\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?(?:\s*(?:million|billion|thousand))?/gi,
+  // Prison / suspension / impound durations: "14 days", "two years"
+  /\b\d+\s*(?:year|month|day|week|hour)s?\b/gi,
+  /\b(?:one|two|three|four|five|six|ten|twelve|fourteen|thirty|sixty|ninety|hundred)\s+(?:year|month|day|week)s?\b/gi,
+  // Speeds: "50 km/h", "50 km per hour", "50 kilometres per hour"
+  /\b\d+\s*(?:km\/h|km\s*per\s*hour|kilometres?\s*per\s*hour|mph)\b/gi,
+  // "50 kilometres over" / "50 over" — Ontario stunt-driving language
+  /\b\d+\s+(?:kilometres?|km)\s+(?:per\s+hour\s+)?(?:or\s+more\s+)?over\b/gi,
+  // Multi-word legal phrases
+  /\bcommits?\s+an?\s+offence\b/gi,
+  /\bguilty\s+of\s+an?\s+offence\b/gi,
+  /\bliable\s+on\s+(?:summary\s+)?conviction\b/gi,
+  /\b(?:on\s+)?summary\s+conviction\b/gi,
+  /\bby\s+way\s+of\s+indictment\b/gi,
+  /\bfor\s+a\s+term\s+of\b/gi,
+  /\bimprisonment\s+for\b/gi,
+  // Single operative / penalty words
+  /\b(?:fine|fines|imprisonment|suspension|suspended|revoked|impound(?:ed)?|conviction|convicted|offence|offences|penalty|penalties|prohibited|prohibit)\b/gi,
+  /\b(?:shall|must|may\s+not|no\s+person)\b/gi,
+];
+
+type Segment = { text: string; highlight: boolean };
+
+function segmentForHighlights(text: string): Segment[] {
+  // Collect every match across every pattern as [start, end) intervals.
+  const intervals: Array<[number, number]> = [];
+  for (const re of HIGHLIGHT_PATTERNS) {
+    re.lastIndex = 0;
+    for (const m of text.matchAll(re)) {
+      if (m.index === undefined) continue;
+      intervals.push([m.index, m.index + m[0].length]);
+    }
+  }
+  if (intervals.length === 0) {
+    return [{ text, highlight: false }];
+  }
+  // Merge overlapping intervals into maximal ranges.
+  intervals.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const merged: Array<[number, number]> = [];
+  for (const [s, e] of intervals) {
+    if (merged.length && s <= merged[merged.length - 1][1]) {
+      merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], e);
+    } else {
+      merged.push([s, e]);
+    }
+  }
+  // Walk the text producing alternating plain / highlighted segments.
+  const out: Segment[] = [];
+  let cursor = 0;
+  for (const [s, e] of merged) {
+    if (s > cursor) out.push({ text: text.slice(cursor, s), highlight: false });
+    out.push({ text: text.slice(s, e), highlight: true });
+    cursor = e;
+  }
+  if (cursor < text.length) out.push({ text: text.slice(cursor), highlight: false });
+  return out;
+}
 
 function HighlightedQuote({
   label,
@@ -540,41 +610,50 @@ function HighlightedQuote({
       ? "text-[var(--foreground-faint)]"
       : "not-italic text-[var(--accent)]/80";
 
+  const segments = useMemo(() => segmentForHighlights(text), [text]);
+
+  // Stagger each highlight so they appear to be marked one after
+  // another, not all at once. Start delay + per-highlight increment.
+  let highlightIndex = 0;
+
   return (
     <blockquote
-      className={`relative overflow-hidden border-l-[3px] ${borderClass} py-1 pl-4 font-display text-[13.5px] leading-[1.55] text-[var(--foreground)] ${italic}`}
+      className={`relative border-l-[3px] ${borderClass} py-1 pl-4 font-display text-[13.5px] leading-[1.55] text-[var(--foreground)] ${italic}`}
     >
-      {/* Persistent soft tint — fades IN after the sweep completes.
-          Opacity 0.18 is strong enough to read as "this is the
-          highlighted passage" but not so loud it fights the text. */}
-      <motion.div
-        aria-hidden
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 0.18 }}
-        transition={{ duration: 0.4, delay: 0.55, ease: "easeOut" }}
-        className="pointer-events-none absolute inset-0 bg-[#fff59d]"
-      />
-      {/* The sweeper — a vertical band of stronger yellow that
-          translates from left edge to right edge once, reinforcing
-          "Harvey is marking this for you" in motion. */}
-      <motion.div
-        aria-hidden
-        initial={{ x: "-100%", opacity: 0 }}
-        animate={{ x: "110%", opacity: [0, 0.85, 0.85, 0] }}
-        transition={{
-          duration: 0.9,
-          delay: 0.1,
-          ease: [0.22, 0.9, 0.25, 1],
-          opacity: { times: [0, 0.1, 0.85, 1], duration: 0.9 },
-        }}
-        className="pointer-events-none absolute inset-y-0 w-[35%] bg-gradient-to-r from-transparent via-[#fff176] to-transparent"
-      />
       <div
-        className={`relative z-[1] mb-1 font-mono text-[8.5px] uppercase tracking-[0.32em] ${labelClass}`}
+        className={`mb-1 font-mono text-[8.5px] uppercase tracking-[0.32em] ${labelClass}`}
       >
         {label}
       </div>
-      <div className="relative z-[1]">{text}</div>
+      <div>
+        {segments.map((seg, i) => {
+          if (!seg.highlight) {
+            return <span key={i}>{seg.text}</span>;
+          }
+          const myIndex = highlightIndex++;
+          return (
+            <motion.span
+              key={i}
+              initial={{
+                backgroundColor: "rgba(255,241,118,0)",
+                boxShadow: "inset 0 0 0 rgba(255,241,118,0)",
+              }}
+              animate={{
+                backgroundColor: "rgba(255,241,118,0.62)",
+                boxShadow: "inset 0 -0.12em 0 rgba(250,204,21,0.55)",
+              }}
+              transition={{
+                duration: 0.32,
+                delay: 0.28 + myIndex * 0.09,
+                ease: [0.22, 0.9, 0.25, 1],
+              }}
+              className="rounded-[2px] px-[1px]"
+            >
+              {seg.text}
+            </motion.span>
+          );
+        })}
+      </div>
     </blockquote>
   );
 }

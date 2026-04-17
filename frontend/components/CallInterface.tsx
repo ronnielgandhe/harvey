@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   RoomAudioRenderer,
@@ -15,7 +15,6 @@ import { OffTheRecord } from "./OffTheRecord";
 import { CaseReceipt, type ReceiptCounts } from "./CaseReceipt";
 import { LiveIndicator } from "./PearsonHeader";
 import { StenoBox } from "./StenoBox";
-import { DonnaFlash } from "./DonnaFlash";
 
 interface Props {
   /** Called when the user ends the call. Carries the billing context
@@ -177,36 +176,32 @@ export function CallInterface({ onEnd }: Props) {
           fullText: o.full_text ? String(o.full_text) : undefined,
         };
       });
-      setPanes((prev) =>
-        prev.find((p) => p.id === id)
-          ? prev
-          : [
-              {
-                kind: "statute",
-                id,
-                jurisdiction: String(payload.jurisdiction ?? ""),
-                section: String(payload.section ?? ""),
-                title: String(payload.title ?? ""),
-                quote: String(payload.quote ?? ""),
-                fullText: payload.full_text
-                  ? String(payload.full_text)
-                  : undefined,
-                frenchQuote: payload.french_quote
-                  ? String(payload.french_quote)
-                  : undefined,
-                frenchFullText: payload.french_full_text
-                  ? String(payload.french_full_text)
-                  : undefined,
-                confidence:
-                  typeof payload.confidence === "number"
-                    ? payload.confidence
-                    : undefined,
-                seeAlso,
-              },
-              ...prev,
-            ],
-      );
-      setCounts((c) => ({ ...c, statutes: c.statutes + 1 }));
+      // Dedupe: ignore if we already have this exact id.
+      if (!panes.find((p) => p.id === id)) {
+        addContentPane({
+          kind: "statute",
+          id,
+          jurisdiction: String(payload.jurisdiction ?? ""),
+          section: String(payload.section ?? ""),
+          title: String(payload.title ?? ""),
+          quote: String(payload.quote ?? ""),
+          fullText: payload.full_text
+            ? String(payload.full_text)
+            : undefined,
+          frenchQuote: payload.french_quote
+            ? String(payload.french_quote)
+            : undefined,
+          frenchFullText: payload.french_full_text
+            ? String(payload.french_full_text)
+            : undefined,
+          confidence:
+            typeof payload.confidence === "number"
+              ? payload.confidence
+              : undefined,
+          seeAlso,
+        });
+        setCounts((c) => ({ ...c, statutes: c.statutes + 1 }));
+      }
     } else if (type === "hill_intel") {
       const tradesRaw = Array.isArray(payload.trades)
         ? (payload.trades as unknown[])
@@ -225,18 +220,15 @@ export function CallInterface({ onEnd }: Props) {
           traded: String(o.traded ?? ""),
         };
       });
-      setPanes((prev) => [
-        {
-          kind: "hill_intel",
-          id: uid("hill"),
-          data: {
-            ticker: String(payload.ticker ?? ""),
-            trades,
-            source: payload.source ? String(payload.source) : undefined,
-          },
+      addContentPane({
+        kind: "hill_intel",
+        id: uid("hill"),
+        data: {
+          ticker: String(payload.ticker ?? ""),
+          trades,
+          source: payload.source ? String(payload.source) : undefined,
         },
-        ...prev,
-      ]);
+      });
       setCounts((c) => ({ ...c, hill: c.hill + 1 }));
     } else if (type === "article_spotlight") {
       const spotlightItemsRaw = Array.isArray(payload.items)
@@ -252,28 +244,24 @@ export function CallInterface({ onEnd }: Props) {
           summary: String(o.summary ?? ""),
         };
       });
-      setPanes((prev) => [
-        {
-          kind: "article_spotlight",
-          id: uid("spot"),
-          data: {
-            query: String(payload.query ?? ""),
-            items: spotlightItems,
-            // Legacy single-item fallback so old payload shape still renders.
-            title: payload.title ? String(payload.title) : undefined,
-            source: payload.source ? String(payload.source) : undefined,
-            published: payload.published ? String(payload.published) : undefined,
-            link: payload.link ? String(payload.link) : undefined,
-            summary: payload.summary ? String(payload.summary) : undefined,
-          },
+      addContentPane({
+        kind: "article_spotlight",
+        id: uid("spot"),
+        data: {
+          query: String(payload.query ?? ""),
+          items: spotlightItems,
+          // Legacy single-item fallback so old payload shape still renders.
+          title: payload.title ? String(payload.title) : undefined,
+          source: payload.source ? String(payload.source) : undefined,
+          published: payload.published ? String(payload.published) : undefined,
+          link: payload.link ? String(payload.link) : undefined,
+          summary: payload.summary ? String(payload.summary) : undefined,
         },
-        ...prev,
-      ]);
+      });
     } else if (type === "stock_card") {
-      setPanes((prev) => [
-        {
-          kind: "stock_card",
-          id: uid("stock"),
+      addContentPane({
+        kind: "stock_card",
+        id: uid("stock"),
           data: {
             query: payload.query ? String(payload.query) : undefined,
             symbol: payload.symbol ? String(payload.symbol) : undefined,
@@ -311,8 +299,7 @@ export function CallInterface({ onEnd }: Props) {
             error: payload.error ? String(payload.error) : undefined,
             message: payload.message ? String(payload.message) : undefined,
           },
-        },
-      ]);
+      });
       setCounts((c) => ({ ...c, stocks: c.stocks + 1 }));
     } else if (type === "news_ticker") {
       const rawItems = Array.isArray(payload.items) ? (payload.items as unknown[]) : [];
@@ -330,17 +317,14 @@ export function CallInterface({ onEnd }: Props) {
         `[Harvey] news_ticker: query="${payload.query}" items=${items.length}`,
         items,
       );
-      setPanes((prev) => [
-        {
-          kind: "news_ticker",
-          id: uid("news"),
-          data: {
-            query: String(payload.query ?? ""),
-            items,
-          },
+      addContentPane({
+        kind: "news_ticker",
+        id: uid("news"),
+        data: {
+          query: String(payload.query ?? ""),
+          items,
         },
-        ...prev,
-      ]);
+      });
       setCounts((c) => ({ ...c, news: c.news + 1 }));
     } else if (type === "tool_call") {
       const id = uid("tool");
@@ -493,27 +477,40 @@ export function CallInterface({ onEnd }: Props) {
     [panes, focusedPaneId],
   );
 
-  // ─── Donna shout ──────────────────────────────────────────────────────
-  // Every time a new stock_card or news_ticker pane arrives, Harvey
-  // delegates to his imaginary secretary: a big "DONAAAA!" ripples
-  // across the screen. The component watches the count and fires on
-  // increments only (see DonnaFlash for the guard).
-  const secretaryTrigger = useMemo(
-    () =>
-      panes.filter(
-        (p) => p.kind === "stock_card" || p.kind === "news_ticker",
-      ).length,
-    [panes],
-  );
-  // Tag line for the overlay ("STOCKS" / "NEWS") — based on the most
-  // recently added secretary-class pane.
-  const secretaryTag = useMemo(() => {
-    for (let i = panes.length - 1; i >= 0; i--) {
-      if (panes[i].kind === "stock_card") return "STOCKS";
-      if (panes[i].kind === "news_ticker") return "NEWS";
-    }
-    return "SECRETARY";
-  }, [panes]);
+  // ─── One-topic-at-a-time pane exclusivity ─────────────────────────────
+  // When Harvey answers a new question, the previous visual answer
+  // should clear so the screen reflects the current conversation —
+  // not a pile of stale cards. But if the LLM fires MULTIPLE tool
+  // calls for the SAME user turn ("check Tesla AND the law on
+  // insider trading"), those all land within ~1-2 seconds and should
+  // coexist.
+  //
+  // The implementation: whenever a content pane arrives, keep any
+  // OTHER content panes that landed within BATCH_WINDOW_MS of now —
+  // those are siblings from the same turn. Content panes older than
+  // the window get evicted. Tool-call pills are ephemeral and have
+  // their own TTL, so they're passed through unchanged.
+  const BATCH_WINDOW_MS = 2500;
+  const paneArrivedAtRef = useRef<Map<string, number>>(new Map());
+  const addContentPane = useCallback((newPane: Pane) => {
+    const now = Date.now();
+    paneArrivedAtRef.current.set(newPane.id, now);
+    setPanes((prev) => {
+      const kept = prev.filter((p) => {
+        if (p.kind === "tool_call") return true;
+        const t = paneArrivedAtRef.current.get(p.id) ?? 0;
+        return now - t < BATCH_WINDOW_MS;
+      });
+      // Housekeeping: drop arrival-time entries for panes we're
+      // evicting so the Map doesn't grow unbounded over a long call.
+      for (const id of Array.from(paneArrivedAtRef.current.keys())) {
+        if (id !== newPane.id && !kept.some((p) => p.id === id)) {
+          paneArrivedAtRef.current.delete(id);
+        }
+      }
+      return [newPane, ...kept];
+    });
+  }, []);
 
   return (
     <div className="relative min-h-screen">
@@ -611,11 +608,10 @@ export function CallInterface({ onEnd }: Props) {
         onSeeAlsoClick={handleSeeAlsoClick}
         onClose={() => setFocusedPaneId(null)}
       />
-
-      {/* "DONAAAA!" secretary-shout overlay — fires on every new
-          stock or news pane. Above everything (z-60) so it visibly
-          announces that Harvey delegated. */}
-      <DonnaFlash trigger={secretaryTrigger} label="DONAAAA" tag={secretaryTag} />
+      {/* DonnaFlash overlay removed — the full-screen shout was too
+          much. The bit lives in Harvey's VOICE now: a short secretary
+          line before he fires stock/news tools, ending in an audible,
+          drawn-out "DONNAAAAA" the TTS actually performs. */}
     </div>
   );
 }

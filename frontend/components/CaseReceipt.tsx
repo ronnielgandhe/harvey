@@ -237,7 +237,7 @@ export function CaseReceipt({
 
         {/* Footer note */}
         <div className="mt-8 border-t border-[var(--rule-strong)] pt-4 text-center font-display text-[12px] italic text-[var(--foreground-muted)]">
-          &ldquo;You don&rsquo;t send me a bill, Harvey. I send <em>you</em> one.&rdquo;
+          Thank you for using our Bluejay Voice Platform.
         </div>
         <div className="mt-1 text-center font-mono text-[9px] uppercase tracking-[0.42em] text-[var(--foreground-faint)]">
           Privileged · Confidential · © Pearson Specter Litt × Bluejay

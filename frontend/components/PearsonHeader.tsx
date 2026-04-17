@@ -306,7 +306,11 @@ export function PearsonHeader({
           style={{
             position: "fixed",
             top: "calc(42vh + 68px)",
-            left: "calc(50% + 150px)",
+            // Tucked directly beneath the Bluejay half of the
+            // center-pose wordmark. +55px sits the button right below
+            // the "Bluejay" text instead of veering out past the
+            // comfort zone like the old +150px did.
+            left: "calc(50% + 55px)",
             zIndex: 55,
             pointerEvents:
               initialTravelDone && variant === "center" ? "auto" : "none",

@@ -44,7 +44,7 @@ COPY data /app/data
 # RAG paths inside the container.
 ENV HARVEY_CHROMA_DIR=/app/data/chroma_db \
     HARVEY_CORPUS_DIR=/app/data/corpus \
-    HARVEY_COLLECTION=harvey_canadian_law \
+    HARVEY_COLLECTION=harvey_legal \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
@@ -53,6 +53,10 @@ ENV HARVEY_CHROMA_DIR=/app/data/chroma_db \
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD pgrep -f "agent.py" >/dev/null || exit 1
 
-# Production mode runs the WorkerOptions entrypoint — no file watching,
-# no auto-reload. Accepts SIGTERM cleanly for ECS rolling deploys.
-CMD ["python", "agent.py", "start"]
+# Warm the Chroma SQLite + HNSW index files into the kernel page cache
+# BEFORE Python imports chromadb. On cold Firecracker VMs, the first
+# mmap of the sqlite file takes 30-60s which trips chromadb's internal
+# Rust-pool timeout. Pre-reading the files with `cat` forces the kernel
+# to load all pages into memory once, so chromadb's subsequent open is
+# ~instant instead of racing a filesystem cold start.
+CMD ["sh", "-c", "find /app/data/chroma_db -type f -exec cat {} + > /dev/null 2>&1; exec python agent.py start"]

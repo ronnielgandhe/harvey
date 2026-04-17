@@ -219,8 +219,7 @@ export function PostCallReceipt({ durationSec, counts, onBack }: Props) {
       {/* Footer quip + signature */}
       <div className="mt-4 border-t border-[var(--rule-strong)] pt-3 text-center">
         <div className="font-display text-[11.5px] italic leading-snug text-[var(--foreground-muted)]">
-          &ldquo;You don&rsquo;t send me a bill, Harvey. I send <em>you</em>{" "}
-          one.&rdquo;
+          Thank you for using our Bluejay Voice Platform.
         </div>
         <div className="mt-1 font-mono text-[8.5px] uppercase tracking-[0.42em] text-[var(--foreground-faint)]">
           Privileged · Confidential
