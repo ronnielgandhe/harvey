@@ -1,0 +1,22 @@
+# Fly.io config — Harvey LiveKit agent worker.
+# Outbound-only (connects to LiveKit Cloud), no HTTP surface.
+
+app = "harvey-specter-agent"
+primary_region = "iad"
+
+[build]
+  dockerfile = "backend/Dockerfile"
+
+[env]
+  HARVEY_CHROMA_DIR = "/app/data/chroma_db"
+  HARVEY_CORPUS_DIR = "/app/data/corpus"
+  HARVEY_COLLECTION = "harvey_canadian_law"
+  PYTHONUNBUFFERED = "1"
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[deploy]
+  strategy = "immediate"
