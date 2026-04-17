@@ -71,6 +71,12 @@ export function CallInterface({ onEnd }: Props) {
   // above the lane stacks. Clearing it (ESC, click-out, "dismiss")
   // returns the pane to its normal lane slot.
   const [focusedPaneId, setFocusedPaneId] = useState<string | null>(null);
+  // Staged end-call fade. When the user confirms the receipt we flip
+  // this true, which fades the pinwheel + HUD + panes first (0.5s),
+  // THEN fires onEnd 520ms later so the outer AnimatePresence can do
+  // its crossfade with empty space instead of a cluttered call UI.
+  // Result: spinner fades → container fades → receipt slides in.
+  const [ending, setEnding] = useState(false);
   const { state: vaState } = useVoiceAssistant();
   const { agent, user } = useTranscriptionsSafe();
   const { localParticipant } = useLocalParticipant();
@@ -456,7 +462,14 @@ export function CallInterface({ onEnd }: Props) {
   }, []);
   const handleReceiptConfirm = useCallback(() => {
     setReceiptOpen(false);
-    onEnd({ durationSec: elapsedSec, counts });
+    // Stage the fade: pinwheel + HUD + panes die over 500ms while
+    // the receipt modal is already gone. THEN fire onEnd so the
+    // outer AnimatePresence starts its crossfade against (almost)
+    // empty space. No more clanky simultaneous disappearance.
+    setEnding(true);
+    window.setTimeout(() => {
+      onEnd({ durationSec: elapsedSec, counts });
+    }, 520);
   }, [onEnd, elapsedSec, counts]);
   const handleReceiptCancel = useCallback(() => setReceiptOpen(false), []);
 
@@ -516,12 +529,16 @@ export function CallInterface({ onEnd }: Props) {
           <motion.div
             initial={{ opacity: 0, scale: 0.82 }}
             animate={{
-              opacity: 1,
-              scale: focusedPaneId ? 0.26 : 1,
+              // `ending` drives the staged fade: pinwheel shrinks +
+              // dissolves first, before the container crossfade.
+              opacity: ending ? 0 : 1,
+              scale: ending ? 0.4 : focusedPaneId ? 0.26 : 1,
               y: focusedPaneId ? 340 : 0,
             }}
             transition={{
-              opacity: { duration: 0.6, delay: 0.25 },
+              opacity: ending
+                ? { duration: 0.45, ease: [0.55, 0, 1, 0.45] }
+                : { duration: 0.6, delay: 0.25 },
               scale: { duration: 0.55, ease: [0.19, 1, 0.22, 1] },
               y: { duration: 0.55, ease: [0.19, 1, 0.22, 1] },
             }}
@@ -534,7 +551,13 @@ export function CallInterface({ onEnd }: Props) {
           </motion.div>
         </div>
 
-        {/* Single status HUD above the pinwheel */}
+        {/* Status HUD, panes, transcript, end-call button — all fade
+            together with the pinwheel when ending=true so the scene
+            empties cleanly before the crossfade to incoming. */}
+        <motion.div
+          animate={{ opacity: ending ? 0 : 1 }}
+          transition={{ duration: 0.35, ease: [0.55, 0, 1, 0.45] }}
+        >
         <StatusHUD state={vaState} label={statusLabel} />
 
         {/* Right-side supplementary panes */}
@@ -560,6 +583,7 @@ export function CallInterface({ onEnd }: Props) {
             <PhoneOff className="h-3.5 w-3.5" strokeWidth={2} />
             End Call
           </button>
+        </motion.div>
         </motion.div>
       </div>
 

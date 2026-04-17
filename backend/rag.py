@@ -133,6 +133,33 @@ def _init_lock():
             os.close(fd)
 
 
+def _reset_chromadb_caches() -> None:
+    """Nuke chromadb's module-level client caches.
+
+    When Chroma's Rust bindings time out during init, chromadb leaves a
+    half-initialized SharedSystemClient entry keyed by settings-hash in
+    a dict on the class. Every retry in the same Python process then
+    re-uses that broken entry and fails with
+    'RustBindingsAPI object has no attribute bindings'.
+    Clearing the dict forces the next attempt to construct a fresh
+    client. gc.collect() ensures any dangling Rust bindings finalize
+    (releasing FDs and the pool slot) before we retry.
+    """
+    try:
+        from chromadb.api.shared_system_client import SharedSystemClient
+        # chromadb has shipped this attribute under both spellings; try
+        # each one defensively so a future chromadb release that fixes
+        # the typo doesn't break us.
+        for attr in ("_identifer_to_system", "_identifier_to_system"):
+            cache = getattr(SharedSystemClient, attr, None)
+            if isinstance(cache, dict):
+                cache.clear()
+    except Exception as exc:  # pragma: no cover — best-effort cleanup
+        logger.debug("reset_chromadb_caches: skipped (%s)", exc)
+    import gc
+    gc.collect()
+
+
 def get_rag() -> LegalRAG:
     """Return the shared RAG instance, retrying init on failure.
 
@@ -147,10 +174,7 @@ def get_rag() -> LegalRAG:
         return _INSTANCE
 
     last_exc: Optional[Exception] = None
-    # 3 attempts instead of 5: with lazy init (RAG out of prewarm) there's
-    # no longer 4-worker contention at boot. Most cold starts succeed on
-    # attempt 1; attempt 2 handles the occasional Rust-pool hiccup.
-    for attempt in range(3):
+    for attempt in range(4):
         try:
             with _init_lock():
                 # Re-check inside the lock: another call might have
@@ -162,13 +186,15 @@ def get_rag() -> LegalRAG:
         except Exception as exc:
             last_exc = exc
             logger.warning(
-                "LegalRAG init failed (attempt %d/3): %s",
+                "LegalRAG init failed (attempt %d/4): %s",
                 attempt + 1,
                 exc,
             )
-            # Short backoff — if chromadb is truly broken, faster failure
-            # is better than hanging the first tool call for 20+ seconds.
-            time.sleep(1.0 + attempt * 1.0)
+            # Critical: clear chromadb's poisoned module cache before
+            # retrying, or attempt N+1 will crash on the same dangling
+            # half-initialized Rust client from attempt N.
+            _reset_chromadb_caches()
+            time.sleep(1.5 + attempt * 1.5)
 
     assert last_exc is not None
     raise last_exc

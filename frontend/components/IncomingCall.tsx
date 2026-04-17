@@ -33,7 +33,11 @@ export function IncomingCall({ onAnswer, loading, error, postCall }: Props) {
 
   return (
     <div className="relative flex min-h-screen w-full items-center justify-center">
-      <AnimatePresence mode="wait">
+      {/* No mode="wait" — otherwise clicking BACK on the receipt
+          forces a 1.2s wait (post-call exit 0.45s + idle delay 0.15s
+          + idle enter 0.6s) before the phone reappears. Overlapping
+          the exit and enter feels instant. */}
+      <AnimatePresence>
         {isPostCall ? (
           // POST-CALL: two-column layout. Receipt LEFT, Call Again RIGHT.
           //
@@ -109,15 +113,17 @@ export function IncomingCall({ onAnswer, loading, error, postCall }: Props) {
             </motion.div>
           </motion.div>
         ) : (
-          // IDLE: phone dead-center.
+          // IDLE: phone dead-center. Short delay so the post-call
+          // pieces start fading BEFORE the phone pops back in, but
+          // not so long that the user feels a pause after BACK.
           <motion.div
             key="idle"
-            initial={{ opacity: 0, scale: 0.92, y: 10 }}
+            initial={{ opacity: 0, scale: 0.94, y: 6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{
-              duration: 0.6,
-              delay: 0.15,
+              duration: 0.35,
+              delay: 0.1,
               ease: [0.22, 0.9, 0.25, 1],
             }}
             className="flex flex-col items-center gap-3 pt-[52vh]"

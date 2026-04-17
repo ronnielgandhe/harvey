@@ -56,6 +56,24 @@ async def entrypoint(ctx: JobContext) -> None:
     log.info("Connecting to room %s", ctx.room.name)
     await ctx.connect()
 
+    # Fire-and-forget RAG warmup. Runs on the worker that's already
+    # spawned for THIS room (so no concurrent-boot contention), kicks
+    # off while Harvey's greeting plays, and is done well before the
+    # user asks the first legal question. Protects us from chromadb's
+    # cold-start Rust-pool flake on the first cite_statute call.
+    import asyncio as _asyncio
+    async def _warm_rag() -> None:
+        try:
+            from rag import get_rag
+            # get_rag() is synchronous + takes ~5s cold — run it in a
+            # thread so we don't block the event loop that's driving
+            # the greeting TTS.
+            await _asyncio.to_thread(get_rag)
+            log.info("RAG pre-warmed for room")
+        except Exception as exc:  # pragma: no cover
+            log.warning("RAG warmup failed: %s (will retry on first tool call)", exc)
+    _asyncio.create_task(_warm_rag())
+
     voice_id = os.getenv("ELEVENLABS_VOICE_ID")
     if not voice_id:
         log.warning(

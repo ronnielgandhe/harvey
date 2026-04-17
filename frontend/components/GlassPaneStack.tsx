@@ -428,13 +428,12 @@ export function StatutePaneCard({
               {pane.title}
             </h4>
           )}
-          {/* EN | FR side-by-side ONLY when French text is actually
-              present. Previously this was an always-2-col grid; when
-              the retrieved chunk was English-only (e.g. Criminal Code
-              excerpts that don't ship with their FR twin), the English
-              blockquote was cramped into the left 50% of the card and
-              the right half sat empty. Single-col fallback lets the
-              English text span the full width and breathe. */}
+          {/* EN / (optional) FR blockquotes. English only = full width.
+              Each blockquote gets a yellow highlighter sweep on first
+              reveal — a marker passes over the text once (450ms, eased)
+              then a faint persistent tint stays behind the quote so
+              the caller can see at a glance "THIS is the part of the
+              law Harvey is pointing at." */}
           {(() => {
             const hasFrench = Boolean(pane.frenchQuote || pane.frenchFullText);
             const enText = expanded && pane.fullText ? pane.fullText : pane.quote;
@@ -449,19 +448,17 @@ export function StatutePaneCard({
                     : "w-full"
                 }
               >
-                <blockquote className="border-l-[3px] border-[var(--foreground)] bg-[var(--background)]/40 py-1 pl-4 font-display text-[13.5px] leading-[1.55] text-[var(--foreground)]">
-                  <div className="mb-1 font-mono text-[8.5px] uppercase tracking-[0.32em] text-[var(--foreground-faint)]">
-                    English
-                  </div>
-                  {enText}
-                </blockquote>
+                <HighlightedQuote
+                  label="English"
+                  text={enText}
+                  tone="primary"
+                />
                 {hasFrench && (
-                  <blockquote className="border-l-[3px] border-[var(--accent)]/60 bg-[var(--accent-soft)]/30 py-1 pl-4 font-display text-[13.5px] italic leading-[1.55] text-[var(--foreground)]">
-                    <div className="mb-1 font-mono text-[8.5px] non-italic uppercase tracking-[0.32em] text-[var(--accent)]/80 not-italic">
-                      Français
-                    </div>
-                    {frText}
-                  </blockquote>
+                  <HighlightedQuote
+                    label="Français"
+                    text={frText}
+                    tone="accent"
+                  />
                 )}
               </div>
             );
@@ -514,6 +511,71 @@ export function StatutePaneCard({
         </>
       )}
     </GlassShell>
+  );
+}
+
+// ─── Highlighted quote ────────────────────────────────────────────────────
+// The blockquote that wraps retrieved statute text, with a one-shot
+// yellow "highlighter" sweep that passes left-to-right across the
+// quote on mount. After the sweep finishes a faint persistent yellow
+// tint stays behind the text so the caller can see at a glance which
+// passage Harvey is actually pointing at.
+
+function HighlightedQuote({
+  label,
+  text,
+  tone,
+}: {
+  label: string;
+  text: string;
+  tone: "primary" | "accent";
+}) {
+  const borderClass =
+    tone === "primary"
+      ? "border-[var(--foreground)]"
+      : "border-[var(--accent)]/60";
+  const italic = tone === "accent" ? "italic" : "";
+  const labelClass =
+    tone === "primary"
+      ? "text-[var(--foreground-faint)]"
+      : "not-italic text-[var(--accent)]/80";
+
+  return (
+    <blockquote
+      className={`relative overflow-hidden border-l-[3px] ${borderClass} py-1 pl-4 font-display text-[13.5px] leading-[1.55] text-[var(--foreground)] ${italic}`}
+    >
+      {/* Persistent soft tint — fades IN after the sweep completes.
+          Opacity 0.18 is strong enough to read as "this is the
+          highlighted passage" but not so loud it fights the text. */}
+      <motion.div
+        aria-hidden
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 0.18 }}
+        transition={{ duration: 0.4, delay: 0.55, ease: "easeOut" }}
+        className="pointer-events-none absolute inset-0 bg-[#fff59d]"
+      />
+      {/* The sweeper — a vertical band of stronger yellow that
+          translates from left edge to right edge once, reinforcing
+          "Harvey is marking this for you" in motion. */}
+      <motion.div
+        aria-hidden
+        initial={{ x: "-100%", opacity: 0 }}
+        animate={{ x: "110%", opacity: [0, 0.85, 0.85, 0] }}
+        transition={{
+          duration: 0.9,
+          delay: 0.1,
+          ease: [0.22, 0.9, 0.25, 1],
+          opacity: { times: [0, 0.1, 0.85, 1], duration: 0.9 },
+        }}
+        className="pointer-events-none absolute inset-y-0 w-[35%] bg-gradient-to-r from-transparent via-[#fff176] to-transparent"
+      />
+      <div
+        className={`relative z-[1] mb-1 font-mono text-[8.5px] uppercase tracking-[0.32em] ${labelClass}`}
+      >
+        {label}
+      </div>
+      <div className="relative z-[1]">{text}</div>
+    </blockquote>
   );
 }
 
