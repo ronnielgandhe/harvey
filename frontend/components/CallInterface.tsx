@@ -96,39 +96,6 @@ export function CallInterface({ onEnd }: Props) {
   const { state: vaState } = useVoiceAssistant();
   const { agent, user } = useTranscriptionsSafe();
 
-  // ─── Mic diagnostics (DEBUG) ─────────────────────────────────────────
-  // Logs mic publication status + live audio level to the browser
-  // console every second. If MUTED=true or RMS stays 0 while you
-  // speak, the browser isn't capturing / publishing your mic and
-  // that's why Harvey can't hear you. Safe to leave on — it's
-  // console.log only, no UI surface.
-  const { localParticipant, microphoneTrack } = useLocalParticipant();
-  useEffect(() => {
-    const id = setInterval(() => {
-      const pub =
-        microphoneTrack ??
-        localParticipant?.getTrackPublication(Track.Source.Microphone);
-      const track = pub?.track;
-      const ms = track?.mediaStream;
-      const audioTracks = ms?.getAudioTracks() ?? [];
-      const native = audioTracks[0];
-      // eslint-disable-next-line no-console
-      console.log("[mic-debug]", {
-        hasPublication: !!pub,
-        isMuted: pub?.isMuted ?? null,
-        trackKind: track?.kind,
-        trackSid: track?.sid,
-        trackName: track?.trackName,
-        nativeEnabled: native?.enabled,
-        nativeMuted: native?.muted,
-        nativeReadyState: native?.readyState,
-        nativeLabel: native?.label,
-        micBandsSum: micBands.reduce((a, b) => a + b, 0).toFixed(4),
-      });
-    }, 1500);
-    return () => clearInterval(id);
-  }, [localParticipant, microphoneTrack, micBands]);
-
   // ─── Call timer with pause support ────────────────────────────────────
   // `startTime` fixed at mount, `pausedMs` accumulates while OTR active.
   // Ticks once per second to force re-render of the LiveIndicator.
@@ -391,32 +358,6 @@ export function CallInterface({ onEnd }: Props) {
   const handleDismiss = useCallback((id: string) => {
     setPanes((prev) => prev.filter((p) => p.id !== id));
   }, []);
-
-  // ─── Dev helper: window.__harveySendText("...") ────────────────────────
-  // Publishes a {type:"debug_inject", text} data packet that the backend
-  // agent routes into session.generate_reply() — lets us demo the full
-  // tool-call flow without a real microphone. Attached to window so
-  // preview tooling / console can drive conversations end-to-end.
-  // (Reuses `localParticipant` from the mic-debug block above.)
-  useEffect(() => {
-    if (typeof window === "undefined" || !localParticipant) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).__harveySendText = async (text: string) => {
-      const payload = new TextEncoder().encode(
-        JSON.stringify({ type: "debug_inject", text }),
-      );
-      try {
-        await localParticipant.publishData(payload, { reliable: true });
-        return { ok: true, text };
-      } catch (err) {
-        return { ok: false, error: String(err) };
-      }
-    };
-    return () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (window as any).__harveySendText;
-    };
-  }, [localParticipant]);
 
   // See-also pill click → prepend a new statute pane from the cached
   // excerpt on the pill itself (no extra RAG round-trip). Delivers the

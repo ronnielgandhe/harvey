@@ -10,10 +10,7 @@ from __future__ import annotations
 import logging
 import os
 
-import json
-
 from dotenv import load_dotenv
-from livekit import rtc
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -110,41 +107,6 @@ async def entrypoint(ctx: JobContext) -> None:
         turn_detection=turn_detection,
         aec_warmup_duration=0,
     )
-
-    # Debug: fires whenever STT produces a transcript. If this NEVER
-    # fires while the user talks, audio isn't reaching Deepgram. Kept
-    # while we debug voice; harmless to leave on.
-    @session.on("user_input_transcribed")
-    def _log_stt(ev):  # type: ignore[misc]
-        txt = getattr(ev, "transcript", None) or getattr(ev, "text", "")
-        is_final = getattr(ev, "is_final", None)
-        log.info("STT %s: %r", "final" if is_final else "interim", txt)
-
-    @session.on("agent_state_changed")
-    def _log_agent_state(ev):  # type: ignore[misc]
-        log.info("agent_state: %s", getattr(ev, "new_state", ev))
-
-    # No-mic test path. Frontend's window.__harveySendText("...") publishes
-    # {type:"debug_inject", text} on the data channel; we route it through
-    # session.generate_reply() so the full LLM → tool-call → TTS pipeline
-    # runs end-to-end. Useful when the browser/OS mic is flaky or denied.
-    @ctx.room.on("data_received")
-    def _on_data(packet: rtc.DataPacket):  # type: ignore[misc]
-        try:
-            msg = json.loads(packet.data.decode("utf-8"))
-        except Exception:
-            return
-        if msg.get("type") != "debug_inject":
-            return
-        text = str(msg.get("text") or "").strip()
-        if not text:
-            return
-        log.info("debug_inject received: %r", text)
-        try:
-            session.interrupt()
-        except Exception:
-            pass
-        session.generate_reply(user_input=text)
 
     await session.start(
         agent=HarveyAgent(),
