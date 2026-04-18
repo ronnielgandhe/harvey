@@ -104,27 +104,27 @@ function Sonar({ onAnswer, loading, disabled }: Omit<Props, "variant">) {
       whileTap={{ scale: 0.96 }}
       className="group pointer-events-auto relative flex flex-col items-center gap-4"
     >
-      {/* 3 expanding rings. Each ring's cycle starts and ends at
-          opacity 0 so the loop is seamless with no visible pop at the
-          repeat boundary. Staggered by 0.93s (cycle / 3) so the three
-          rings are always evenly spaced mid-animation. */}
+      {/* 3 expanding rings. Staggered by 0.9s each with a bright
+          first keyframe so the pulse is always visible, never an
+          invisible fade-out. Earlier "seamless" retime accidentally
+          left the rings at barely-there opacity for most of the
+          cycle, making the pulse look like it had disappeared. */}
       <div className="relative flex h-[150px] w-[150px] items-center justify-center">
         {[0, 1, 2].map((i) => (
           <motion.span
             key={i}
             aria-hidden
             className="absolute inset-0 rounded-full border border-[var(--foreground)]"
-            initial={false}
+            initial={{ opacity: 0, scale: 0.7 }}
             animate={{
-              opacity: [0, 0.55, 0.15, 0],
-              scale: [0.55, 0.82, 1.12, 1.5],
+              opacity: [0.6, 0.25, 0],
+              scale: [0.7, 1.05, 1.5],
             }}
             transition={{
-              duration: 2.8,
-              delay: i * 0.93,
+              duration: 2.6,
+              delay: i * 0.9,
               repeat: Infinity,
               ease: "easeOut",
-              times: [0, 0.18, 0.65, 1],
             }}
           />
         ))}

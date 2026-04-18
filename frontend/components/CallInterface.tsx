@@ -9,7 +9,15 @@ import {
   useMultibandTrackVolume,
   useVoiceAssistant,
 } from "@livekit/components-react";
-import { BookOpen, Ear, Loader2, MessageSquare, PhoneOff } from "lucide-react";
+import {
+  BookOpen,
+  Ear,
+  Loader2,
+  MessageSquare,
+  Mic,
+  MicOff,
+  PhoneOff,
+} from "lucide-react";
 import { BluejayPinwheel } from "./BluejayPinwheel";
 import { CaseDocs } from "./CaseDocs";
 import { GlassPaneStack, type Pane, type SeeAlsoItem } from "./GlassPaneStack";
@@ -73,6 +81,11 @@ export function CallInterface({ onEnd }: Props) {
   // without hanging up. Owned by CallInterface so it layers cleanly
   // above every in-call pane.
   const [docsOpen, setDocsOpen] = useState(false);
+  // Mic mute toggle. Lets the caller silence themselves while Harvey
+  // is monologuing (useful during a live demo). Drives
+  // localParticipant.setMicrophoneEnabled so the backend stops
+  // receiving audio.
+  const [muted, setMuted] = useState(false);
   // Pane Harvey has voice-expanded — rendered as a centered overlay
   // above the lane stacks. Clearing it (ESC, click-out, "dismiss")
   // returns the pane to its normal lane slot.
@@ -83,21 +96,26 @@ export function CallInterface({ onEnd }: Props) {
   // its crossfade with empty space instead of a cluttered call UI.
   // Result: spinner fades → container fades → receipt slides in.
   const [ending, setEnding] = useState(false);
-  const { state: vaState, audioTrack: agentAudioTrack } = useVoiceAssistant();
+  const { state: vaState } = useVoiceAssistant();
   const { agent, user } = useTranscriptionsSafe();
-  const { localParticipant } = useLocalParticipant();
+  const { localParticipant, microphoneTrack } = useLocalParticipant();
 
   // When the user goes quiet too long, we signal the backend to have
   // Harvey drop an impatient line. Nudge cooldown is tracked locally
   // so we don't spam the worker if the user stays silent for minutes.
   const lastNudgeAtRef = useRef<number>(0);
 
-  // Harvey's voice drives the pinwheel wings. 6 FFT bands, one per
-  // wing, so each wing throbs on the frequencies its slice covers.
-  // Updates every 32ms for a lively response without thrashing the
-  // render loop. Falls back to an empty array when the agent track
-  // hasn't arrived yet so the hook is still stable.
-  const agentBands = useMultibandTrackVolume(agentAudioTrack, {
+  // The USER'S mic drives the pinwheel wings. Each of the 6 wings
+  // reacts to its own FFT band so the caller sees their own voice
+  // throbbing the logo as they speak. Was hooked to the agent's
+  // track earlier, which made the pinwheel move on Harvey's voice
+  // instead of the caller's. 32ms updates = lively response without
+  // render-loop thrash.
+  const userMicTrack =
+    microphoneTrack?.track && microphoneTrack.track.kind === "audio"
+      ? (microphoneTrack.track as Parameters<typeof useMultibandTrackVolume>[0])
+      : undefined;
+  const userBands = useMultibandTrackVolume(userMicTrack, {
     bands: 6,
     updateInterval: 32,
   });
@@ -479,6 +497,20 @@ export function CallInterface({ onEnd }: Props) {
   }, [onEnd, elapsedSec, counts]);
   const handleReceiptCancel = useCallback(() => setReceiptOpen(false), []);
 
+  // Flip the local mic on/off. LiveKit returns a promise; log but
+  // don't block on failure so the UI toggle always lands.
+  const handleMuteToggle = useCallback(() => {
+    setMuted((prev) => {
+      const next = !prev;
+      if (localParticipant) {
+        localParticipant.setMicrophoneEnabled(!next).catch((err) =>
+          console.warn("[Harvey] setMicrophoneEnabled failed", err),
+        );
+      }
+      return next;
+    });
+  }, [localParticipant]);
+
   // ESC closes focused pane first, then toggles confirm receipt.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -626,7 +658,7 @@ export function CallInterface({ onEnd }: Props) {
             <BluejayPinwheel
               size={320}
               pulse={vaState === "speaking"}
-              micBands={agentBands}
+              micBands={userBands}
             />
           </motion.div>
         </div>
@@ -670,13 +702,33 @@ export function CallInterface({ onEnd }: Props) {
         {/* Live court-reporter transcript box — bottom-right, above LIVE pill */}
         <StenoBox agent={agent} user={user} startMs={startTime} />
 
-        {/* End call button — bottom center */}
+        {/* Mute toggle + End call, grouped bottom center. Mute sits
+            to the left of End so the kill switch stays the rightmost
+            (and most prominent) action. */}
         <motion.div
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.6 }}
-          className="fixed bottom-7 left-1/2 z-30 -translate-x-1/2"
+          className="fixed bottom-7 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3"
         >
+          <button
+            type="button"
+            onClick={handleMuteToggle}
+            aria-label={muted ? "Unmute microphone" : "Mute microphone"}
+            aria-pressed={muted}
+            className={`inline-flex h-9 items-center gap-2 rounded-full border px-4 font-mono text-[10px] uppercase tracking-[0.32em] backdrop-blur transition-colors ${
+              muted
+                ? "border-[var(--crimson)] bg-[var(--crimson)] text-white hover:bg-[var(--foreground)] hover:border-[var(--foreground)]"
+                : "border-[var(--rule-strong)] bg-[rgba(255,255,255,0.82)] text-[var(--foreground-muted)] hover:border-[var(--foreground)] hover:text-[var(--foreground)]"
+            }`}
+          >
+            {muted ? (
+              <MicOff className="h-3.5 w-3.5" strokeWidth={2} />
+            ) : (
+              <Mic className="h-3.5 w-3.5" strokeWidth={2} />
+            )}
+            {muted ? "Muted" : "Mute"}
+          </button>
           <button onClick={handleEndClick} className="btn-end">
             <PhoneOff className="h-3.5 w-3.5" strokeWidth={2} />
             End Call
