@@ -1,7 +1,8 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useRef } from "react";
+import { ChevronDown } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // ────────────────────────────────────────────────────────────────────────
 // StenoBox — court-reporter live transcript pane.
@@ -69,6 +70,12 @@ export function StenoBox({ agent, user, startMs }: Props) {
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [lines.length]);
 
+  // Collapse toggle. User can minimise the transcript so content
+  // panes (statute cards, stock charts) that center-stage above the
+  // bottom edge have room to breathe. Click the header to toggle.
+  const [collapsed, setCollapsed] = useState(false);
+  const toggleCollapsed = () => setCollapsed((prev) => !prev);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
@@ -78,10 +85,17 @@ export function StenoBox({ agent, user, startMs }: Props) {
     >
       <div
         className="pointer-events-auto flex flex-col overflow-hidden rounded-xl border border-[var(--rule-strong)] bg-[rgba(255,255,255,0.92)] shadow-[0_12px_40px_-16px_rgba(0,0,0,0.18)] backdrop-blur"
-        style={{ width: 440, maxHeight: 280 }}
+        style={{ width: 440, maxHeight: collapsed ? 44 : 280 }}
       >
-        {/* Header — typewriter court reporter vibe */}
-        <div className="flex items-center justify-between border-b border-[var(--rule)] bg-[var(--accent-soft)]/40 px-4 py-2.5">
+        {/* Header — typewriter court reporter vibe. Click anywhere on
+            this row to collapse/expand the transcript body. */}
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? "Expand transcript" : "Collapse transcript"}
+          aria-expanded={!collapsed}
+          className="flex w-full items-center justify-between border-b border-[var(--rule)] bg-[var(--accent-soft)]/40 px-4 py-2.5 text-left transition-colors hover:bg-[var(--accent-soft)]/60"
+        >
           <div className="flex items-center gap-2.5">
             <span className="relative flex h-1.5 w-1.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-60" />
@@ -93,17 +107,35 @@ export function StenoBox({ agent, user, startMs }: Props) {
             >
               Court Stenographer
             </span>
+            {collapsed && lines.length > 0 && (
+              <span className="font-mono text-[9px] uppercase tracking-[0.28em] text-[var(--foreground-faint)]">
+                · {lines.length} {lines.length === 1 ? "line" : "lines"}
+              </span>
+            )}
           </div>
-          <span className="font-mono text-[9px] uppercase tracking-[0.32em] text-[var(--foreground-faint)]">
-            On the record
-          </span>
-        </div>
+          <div className="flex items-center gap-2.5">
+            <span className="font-mono text-[9px] uppercase tracking-[0.32em] text-[var(--foreground-faint)]">
+              {collapsed ? "Collapsed" : "On the record"}
+            </span>
+            <motion.span
+              aria-hidden
+              animate={{ rotate: collapsed ? 180 : 0 }}
+              transition={{ duration: 0.25 }}
+              className="text-[var(--foreground-faint)]"
+            >
+              <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
+            </motion.span>
+          </div>
+        </button>
 
         {/* Transcript body */}
         <div
           ref={scrollRef}
           className="thin-scroll flex-1 overflow-y-auto px-3.5 py-3"
-          style={{ scrollbarWidth: "thin" }}
+          style={{
+            scrollbarWidth: "thin",
+            display: collapsed ? "none" : "block",
+          }}
         >
           {lines.length === 0 ? (
             <div className="py-6 text-center font-mono text-[10px] uppercase tracking-[0.38em] text-[var(--foreground-faint)]">

@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Printer, X } from "lucide-react";
+import { useMemo } from "react";
 
 /**
  * "Statement of Services Rendered" — an itemized PSL-letterhead receipt
@@ -76,14 +77,63 @@ export function CaseReceipt({
   const discount = -subtotal * 0.9;
   const netDue = subtotal + discount;
 
-  const caseNo = `PSL-${new Date().getFullYear()}-${Math.floor(
-    1000 + Math.random() * 9000,
-  )}`;
-  const today = new Date().toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  // Case number locked in on first mount. Was recomputed on every
+  // render, so the digits flickered every time the timer ticked.
+  // useMemo with [] stabilises it for the life of this receipt.
+  const caseNo = useMemo(
+    () =>
+      `PSL-${new Date().getFullYear()}-${Math.floor(
+        1000 + Math.random() * 9000,
+      )}`,
+    [],
+  );
+  const today = useMemo(
+    () =>
+      new Date().toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }),
+    [],
+  );
+
+  // Case brief — a short legal summary of what was handled on the
+  // call. Drives a "Matters handled" list beneath the letterhead so
+  // the receipt also reads as a take-home memo, not only a bill.
+  const matters: string[] = [];
+  if (counts.statutes > 0) {
+    matters.push(
+      `Statute research conducted on ${counts.statutes} ${
+        counts.statutes === 1 ? "matter" : "matters"
+      }; relevant section cited and placed on record.`,
+    );
+  }
+  if (counts.news > 0) {
+    matters.push(
+      `Current-events intel pulled on ${counts.news} ${
+        counts.news === 1 ? "topic" : "topics"
+      }; wire-service headlines reviewed.`,
+    );
+  }
+  if (counts.stocks > 0) {
+    matters.push(
+      `Market quote pulled for ${counts.stocks} ${
+        counts.stocks === 1 ? "ticker" : "tickers"
+      }; fundamentals on file.`,
+    );
+  }
+  if (counts.hill > 0) {
+    matters.push(
+      `Congressional STOCK Act disclosures reviewed on ${counts.hill} ${
+        counts.hill === 1 ? "position" : "positions"
+      }.`,
+    );
+  }
+  if (matters.length === 0) {
+    matters.push(
+      "Preliminary consultation; no research tools invoked. No further action recommended at this time.",
+    );
+  }
 
   return (
     <motion.div
@@ -91,7 +141,7 @@ export function CaseReceipt({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3 }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(20,18,14,0.55)] p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-[rgba(20,18,14,0.55)] px-4 py-[3vh] backdrop-blur-sm"
     >
       <motion.div
         initial={{ opacity: 0, y: 24, scale: 0.97 }}
@@ -100,7 +150,7 @@ export function CaseReceipt({
         transition={{ duration: 0.42, ease: [0.19, 1, 0.22, 1] }}
         role="dialog"
         aria-labelledby="receipt-title"
-        className="case-receipt relative max-h-[90vh] w-full max-w-[680px] overflow-y-auto rounded-sm border border-[var(--rule-strong)] bg-white p-10 shadow-[0_30px_80px_-20px_rgba(20,18,14,0.4)]"
+        className="case-receipt relative w-full max-w-[680px] rounded-sm border border-[var(--rule-strong)] bg-white px-10 pb-8 pt-8 shadow-[0_30px_80px_-20px_rgba(20,18,14,0.4)]"
       >
         {/* Dismiss X — not printed */}
         <button
@@ -147,6 +197,34 @@ export function CaseReceipt({
             mono
           />
           <Meta label="Mode" value="Voice · privileged" />
+        </div>
+
+        {/* Case brief — the "take-home memo" side of the receipt. Tells
+            the client what was actually handled, in legal-memo register,
+            above the billing detail. */}
+        <div className="mt-5 rounded-sm border border-[var(--rule-strong)]/80 bg-[rgba(245,245,240,0.55)] px-4 py-3">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="font-mono text-[9px] uppercase tracking-[0.42em] text-[var(--foreground-muted)]">
+              Case brief · matters handled
+            </span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.32em] text-[var(--foreground-faint)]">
+              For client record
+            </span>
+          </div>
+          <ul className="space-y-1">
+            {matters.map((line, idx) => (
+              <li
+                key={idx}
+                className="flex items-start gap-2 text-[11.5px] leading-snug text-[var(--foreground-muted)]"
+              >
+                <span aria-hidden className="mt-[7px] h-[3px] w-[3px] shrink-0 rounded-full bg-[var(--foreground)]" />
+                <span>{line}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-2 border-t border-dashed border-[var(--rule-strong)]/60 pt-2 font-display text-[11px] italic text-[var(--foreground-muted)]">
+            All advice rendered under attorney-client privilege. Statute citations delivered verbatim from the bench.
+          </div>
         </div>
 
         {/* Line items */}

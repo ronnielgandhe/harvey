@@ -81,13 +81,14 @@ export function StockCardPane({
   return (
     <motion.div
       layout
-      className="relative overflow-hidden rounded-xl border border-[var(--rule-strong)] shadow-[0_6px_24px_rgba(0,0,0,0.06)]"
+      className="relative overflow-hidden rounded-xl border border-[var(--rule-strong)] shadow-[0_10px_28px_rgba(0,0,0,0.09)]"
       style={{
-        // Subtle direction-tinted gradient background — green wash for
-        // gainers, red wash for losers. Keeps the card alive without
-        // overwhelming the copy.
-        background:
-          `linear-gradient(180deg, rgba(255,255,255,0.95) 0%, ${dirSoft} 100%)`,
+        // Opaque paper feel so when the card centers over the transcript
+        // the text behind doesn't bleed through. Gradient now runs
+        // white-to-white with the direction tint only as a 12% overlay
+        // at the bottom edge, which keeps the alive-card feel without
+        // any transparency in the reading area.
+        background: `linear-gradient(180deg, #ffffff 0%, #ffffff 72%, ${dirSoft} 100%)`,
       }}
     >
       {/* Color bar — direction signal at a glance, top edge */}

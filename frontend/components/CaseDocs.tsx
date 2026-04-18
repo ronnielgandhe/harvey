@@ -5,23 +5,25 @@ import {
   ArrowLeft,
   BookOpen,
   Landmark,
+  Mic,
   Newspaper,
   Scroll,
+  Sparkles,
   TrendingUp,
 } from "lucide-react";
 import { useEffect } from "react";
 
 /**
  * Condensed, one-screen "counsel on call" dossier that overlays the
- * idle hero when the user clicks "Read docs". Not a new page — a
+ * idle hero when the user clicks "Read docs". Not a new page. Just a
  * centered panel that sits on top of a blurred version of whatever was
  * on screen, with a single Back button to dismiss.
  *
  * Everything fits above the fold: tagline, stack chips, three capability
- * lines, and the voice pipeline — no scrolling intended.
+ * lines, and the voice pipeline, no scrolling intended.
  */
 
-// Stack — presented as short category/tool pairs so the full list
+// Stack is presented as short category/tool pairs so the full list
 // fits cleanly in a single row instead of wrapping. Tool names are
 // trimmed to their recognisable short forms.
 const STACK: Array<{ label: string; tool: string }> = [
@@ -36,23 +38,23 @@ const STACK: Array<{ label: string; tool: string }> = [
 const CAPABILITIES = [
   {
     icon: Scroll,
-    title: "Cites Canadian law",
-    body: "RAG over 31 federal and Ontario statutes. Every legal answer is grounded in the actual text.",
+    title: "Reads Canadian law",
+    body: "2,806 chunks across 7 Ontario and federal statutes. When you ask, he pulls the one that covers it and drops the card on screen.",
   },
   {
     icon: Newspaper,
     title: "Pulls live news",
-    body: "Google News RSS on every time-sensitive question. Headlines slide in while he talks.",
+    body: "Google News RSS on anything time-sensitive. Headlines slide in while he talks.",
   },
   {
     icon: TrendingUp,
     title: "Tracks public tickers",
-    body: "Yahoo Finance the moment a company comes up. Price, change, 52-week range, docked left.",
+    body: "Yahoo Finance the moment a company comes up. Price, change, 52-week range.",
   },
   {
     icon: Landmark,
     title: "Has sources on the Hill",
-    body: "Live QuiverQuant feed of US Congressional STOCK Act filings for any ticker he mentions.",
+    body: "Congressional STOCK Act filings for any ticker he mentions. QuiverQuant if a key is set, bundled dataset otherwise.",
   },
 ];
 
@@ -62,7 +64,7 @@ interface Props {
 }
 
 export function CaseDocs({ open, onClose }: Props) {
-  // Close on Escape — expected modal behavior, keeps the Back button
+  // Close on Escape. Expected modal behavior, keeps the Back button
   // from being the only escape hatch.
   useEffect(() => {
     if (!open) return;
@@ -84,7 +86,7 @@ export function CaseDocs({ open, onClose }: Props) {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.35, ease: [0.19, 1, 0.22, 1] }}
         >
-          {/* Scrim — lightweight: just enough dim to throw focus onto
+          {/* Scrim is lightweight: just enough dim to throw focus onto
               the panel without hiding the skyline behind it. No blur
               so the buildings still read through the overlay. */}
           <motion.button
@@ -96,7 +98,7 @@ export function CaseDocs({ open, onClose }: Props) {
             exit={{ opacity: 0 }}
           />
 
-          {/* Panel — dossier style, one screen, center-stage */}
+          {/* Panel is dossier style, one screen, center-stage */}
           <motion.div
             role="dialog"
             aria-modal="true"
@@ -105,10 +107,11 @@ export function CaseDocs({ open, onClose }: Props) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.99 }}
             transition={{ duration: 0.5, ease: [0.19, 1, 0.22, 1] }}
-            // min-h gives the panel real vertical presence so it feels
-            // like a document, not a narrow dialog. max-h caps it so
-            // it never runs past the viewport on short screens.
-            className="relative w-full min-h-[740px] max-h-[92vh] w-full max-w-[1180px] overflow-y-auto rounded-sm border border-[var(--rule-strong)] bg-[var(--paper)] shadow-[0_28px_90px_-30px_rgba(0,0,0,0.38)]"
+            // max-h caps the panel so it never runs past the viewport
+            // on short screens. Scrolls internally if the how-to
+            // section plus the stack plus the voice credits exceed
+            // the cap.
+            className="relative w-full max-h-[92vh] w-full max-w-[1180px] overflow-y-auto rounded-sm border border-[var(--rule-strong)] bg-[var(--paper)] shadow-[0_28px_90px_-30px_rgba(0,0,0,0.38)]"
           >
             {/* Header strip: back button + file label */}
             <div className="flex items-center justify-between border-b border-[var(--rule-strong)] bg-[rgba(20,18,14,0.025)] px-5 py-3">
@@ -127,7 +130,7 @@ export function CaseDocs({ open, onClose }: Props) {
               </span>
             </div>
 
-            {/* Body — generous vertical padding so the panel feels
+            {/* Body has generous vertical padding so the panel feels
                 like a full dossier, not a snug popover. */}
             <div className="px-10 pt-12 pb-14">
               {/* The matter */}
@@ -139,14 +142,14 @@ export function CaseDocs({ open, onClose }: Props) {
               </h2>
               <p className="mt-3 max-w-[680px] text-[13.5px] leading-relaxed text-[var(--foreground-muted)]">
                 A voice-first legal agent. Call him, speak your situation in
-                plain English, and he answers with the relevant Canadian
-                statute cited, a live news synthesis, a real-time market
-                quote, or the latest Congressional trading intel. Whatever
-                you ask.
+                plain English, and he pulls up the Canadian statute that
+                covers it. If you ask about a company, he pulls the live
+                quote and any Congressional trades on it. If you ask about
+                the news, he pulls the latest headlines.
               </p>
 
-              {/* Capabilities — 2×2 grid, roomier padding now that
-                  the panel has more vertical space to work with. */}
+              {/* Capabilities are a 2x2 grid with roomier padding now
+                  that the panel has more vertical space to work with. */}
               <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
                 {CAPABILITIES.map((c) => (
                   <div
@@ -169,9 +172,74 @@ export function CaseDocs({ open, onClose }: Props) {
                 ))}
               </div>
 
-              {/* Stack — proper label/value grid, 3 columns. Each row
+              {/* How to use Harvey. Quick cheat sheet so a first-time
+                  caller knows what to ask and what to expect. Two
+                  columns so it reads fast without a wall of text. */}
+              <div className="mt-6 rounded-sm border border-[var(--rule-strong)] bg-white/80 px-5 py-4">
+                <div className="mb-3 flex items-center gap-3">
+                  <Mic
+                    className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]"
+                    strokeWidth={2}
+                  />
+                  <span className="font-mono text-[10px] uppercase tracking-[0.42em] text-[var(--foreground-muted)]">
+                    How to talk to Harvey
+                  </span>
+                  <div className="h-px flex-1 bg-[var(--rule-strong)]" />
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <div className="mb-1 font-display text-[13px] font-semibold text-[var(--foreground)]">
+                      What to ask
+                    </div>
+                    <ul className="space-y-1.5 text-[12px] leading-snug text-[var(--foreground-muted)]">
+                      <li className="flex gap-2">
+                        <span aria-hidden className="mt-[7px] h-[3px] w-[3px] shrink-0 rounded-full bg-[var(--foreground)]" />
+                        <span>"I got clocked doing 150 on the 401, what am I looking at" gets you the Highway Traffic Act.</span>
+                      </li>
+                      <li className="flex gap-2">
+                        <span aria-hidden className="mt-[7px] h-[3px] w-[3px] shrink-0 rounded-full bg-[var(--foreground)]" />
+                        <span>"My landlord served me an N12" pulls the Residential Tenancies Act.</span>
+                      </li>
+                      <li className="flex gap-2">
+                        <span aria-hidden className="mt-[7px] h-[3px] w-[3px] shrink-0 rounded-full bg-[var(--foreground)]" />
+                        <span>"What's Apple at" gets a live quote. Add "any insider action" for Congressional trades.</span>
+                      </li>
+                      <li className="flex gap-2">
+                        <span aria-hidden className="mt-[7px] h-[3px] w-[3px] shrink-0 rounded-full bg-[var(--foreground)]" />
+                        <span>"What's happening with the Bank of Canada" gets live news.</span>
+                      </li>
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center gap-1.5 font-display text-[13px] font-semibold text-[var(--foreground)]">
+                      <Sparkles className="h-3 w-3 text-[var(--accent)]" strokeWidth={2} />
+                      Harvey's tells
+                    </div>
+                    <ul className="space-y-1.5 text-[12px] leading-snug text-[var(--foreground-muted)]">
+                      <li className="flex gap-2">
+                        <span aria-hidden className="mt-[7px] h-[3px] w-[3px] shrink-0 rounded-full bg-[var(--foreground)]" />
+                        <span><span className="font-semibold text-[var(--foreground)]">Insult him.</span> He fires back harder, in one sentence.</span>
+                      </li>
+                      <li className="flex gap-2">
+                        <span aria-hidden className="mt-[7px] h-[3px] w-[3px] shrink-0 rounded-full bg-[var(--foreground)]" />
+                        <span><span className="font-semibold text-[var(--foreground)]">Ask for market stuff</span> and you might catch him yelling "DONNAAAAA" before the quote loads.</span>
+                      </li>
+                      <li className="flex gap-2">
+                        <span aria-hidden className="mt-[7px] h-[3px] w-[3px] shrink-0 rounded-full bg-[var(--foreground)]" />
+                        <span><span className="font-semibold text-[var(--foreground)]">Off the record.</span> Flip the OTR toggle and he drops a Suits-world lore line.</span>
+                      </li>
+                      <li className="flex gap-2">
+                        <span aria-hidden className="mt-[7px] h-[3px] w-[3px] shrink-0 rounded-full bg-[var(--foreground)]" />
+                        <span><span className="font-semibold text-[var(--foreground)]">Go silent too long</span> and he'll nudge you. He bills in six-minute increments.</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stack is a proper label/value grid, 3 columns. Each row
                   reads cleanly: SMALL LABEL on top, BOLD TOOL NAME below.
-                  Sans + serif mix instead of mono-everywhere so the
+                  Sans + serif mix instead of mono everywhere so the
                   tool names are actually readable. */}
               <div className="mt-6 rounded-sm border border-[var(--rule-strong)] bg-white/80 px-5 py-4">
                 <div className="mb-3 flex items-center gap-3">
@@ -194,9 +262,9 @@ export function CaseDocs({ open, onClose }: Props) {
                 </div>
               </div>
 
-              {/* Voice credits — full sentence now, describing how the
-                  voice was actually cloned. Was a one-liner credit
-                  before, now it's the "how it works" paragraph. */}
+              {/* Voice credits, full sentence describing how the voice
+                  was actually cloned. Was a one-liner credit before,
+                  now it's the "how it works" paragraph. */}
               <div className="mt-5 flex gap-3 border-t border-[var(--rule-strong)] pt-4">
                 <BookOpen
                   className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--accent)]"

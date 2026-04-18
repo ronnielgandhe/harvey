@@ -6,10 +6,12 @@ import {
   RoomAudioRenderer,
   useDataChannel,
   useLocalParticipant,
+  useMultibandTrackVolume,
   useVoiceAssistant,
 } from "@livekit/components-react";
-import { Ear, Loader2, MessageSquare, PhoneOff } from "lucide-react";
+import { BookOpen, Ear, Loader2, MessageSquare, PhoneOff } from "lucide-react";
 import { BluejayPinwheel } from "./BluejayPinwheel";
+import { CaseDocs } from "./CaseDocs";
 import { GlassPaneStack, type Pane, type SeeAlsoItem } from "./GlassPaneStack";
 import { OffTheRecord } from "./OffTheRecord";
 import { CaseReceipt, type ReceiptCounts } from "./CaseReceipt";
@@ -66,6 +68,11 @@ export function CallInterface({ onEnd }: Props) {
   });
   const [otr, setOtr] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
+  // Read-Docs overlay accessible during the call so the caller can
+  // pull up the quick "how to use Harvey" cheat sheet mid-conversation
+  // without hanging up. Owned by CallInterface so it layers cleanly
+  // above every in-call pane.
+  const [docsOpen, setDocsOpen] = useState(false);
   // Pane Harvey has voice-expanded — rendered as a centered overlay
   // above the lane stacks. Clearing it (ESC, click-out, "dismiss")
   // returns the pane to its normal lane slot.
@@ -76,9 +83,24 @@ export function CallInterface({ onEnd }: Props) {
   // its crossfade with empty space instead of a cluttered call UI.
   // Result: spinner fades → container fades → receipt slides in.
   const [ending, setEnding] = useState(false);
-  const { state: vaState } = useVoiceAssistant();
+  const { state: vaState, audioTrack: agentAudioTrack } = useVoiceAssistant();
   const { agent, user } = useTranscriptionsSafe();
   const { localParticipant } = useLocalParticipant();
+
+  // When the user goes quiet too long, we signal the backend to have
+  // Harvey drop an impatient line. Nudge cooldown is tracked locally
+  // so we don't spam the worker if the user stays silent for minutes.
+  const lastNudgeAtRef = useRef<number>(0);
+
+  // Harvey's voice drives the pinwheel wings. 6 FFT bands, one per
+  // wing, so each wing throbs on the frequencies its slice covers.
+  // Updates every 32ms for a lively response without thrashing the
+  // render loop. Falls back to an empty array when the agent track
+  // hasn't arrived yet so the hook is still stable.
+  const agentBands = useMultibandTrackVolume(agentAudioTrack, {
+    bands: 6,
+    updateInterval: 32,
+  });
 
   // ─── Call timer with pause support ────────────────────────────────────
   // `startTime` fixed at mount, `pausedMs` accumulates while OTR active.
@@ -472,6 +494,61 @@ export function CallInterface({ onEnd }: Props) {
     return () => window.removeEventListener("keydown", handler);
   }, [receiptOpen, focusedPaneId]);
 
+  // ─── Idle nudge ──────────────────────────────────────────────────────
+  // If the user goes silent for a while, have Harvey drop an impatient
+  // line. "I don't have forever" vibes. Gated on:
+  //   - last user/agent activity older than NUDGE_SILENCE_MS
+  //   - last nudge older than NUDGE_COOLDOWN_MS (no spam)
+  //   - Harvey not currently speaking or thinking
+  //   - not in OTR mode (off the record stays quiet)
+  //   - not in the ending fade
+  // We publish {type:"idle_nudge"} on the data channel; the backend
+  // picks a random line and speaks it via session.say().
+  const NUDGE_SILENCE_MS = 28_000;
+  const NUDGE_COOLDOWN_MS = 45_000;
+  // Ref-sync the transcription arrays so the interval below doesn't
+  // tear down and rebuild every time a new transcript chunk arrives.
+  const userRef = useRef(user);
+  const agentRef = useRef(agent);
+  useEffect(() => {
+    userRef.current = user;
+    agentRef.current = agent;
+  }, [user, agent]);
+  useEffect(() => {
+    if (!localParticipant) return;
+    const id = window.setInterval(() => {
+      if (ending || otr) return;
+      if (vaState === "speaking" || vaState === "thinking") return;
+      const now = Date.now();
+      const latest = (
+        arr: Array<{ firstReceivedTime?: number }>,
+        fallback: number,
+      ) =>
+        arr.reduce(
+          (max, u) => Math.max(max, u.firstReceivedTime ?? 0),
+          fallback,
+        );
+      const lastUser = latest(userRef.current, startTime);
+      const lastAgent = latest(agentRef.current, startTime);
+      const sinceActivity = now - Math.max(lastUser, lastAgent);
+      const sinceNudge = now - lastNudgeAtRef.current;
+      if (sinceActivity < NUDGE_SILENCE_MS) return;
+      if (sinceNudge < NUDGE_COOLDOWN_MS) return;
+      try {
+        const payload = new TextEncoder().encode(
+          JSON.stringify({ type: "idle_nudge" }),
+        );
+        localParticipant
+          .publishData(payload, { reliable: true })
+          .catch((err) => console.warn("[Harvey] idle_nudge publish failed", err));
+        lastNudgeAtRef.current = now;
+      } catch (err) {
+        console.warn("[Harvey] idle_nudge error", err);
+      }
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [ending, otr, vaState, localParticipant, startTime]);
+
   const focusedPane = useMemo(
     () => panes.find((p) => p.id === focusedPaneId) ?? null,
     [panes, focusedPaneId],
@@ -549,6 +626,7 @@ export function CallInterface({ onEnd }: Props) {
             <BluejayPinwheel
               size={320}
               pulse={vaState === "speaking"}
+              micBands={agentBands}
             />
           </motion.div>
         </div>
@@ -561,6 +639,24 @@ export function CallInterface({ onEnd }: Props) {
           transition={{ duration: 0.35, ease: [0.55, 0, 1, 0.45] }}
         >
         <StatusHUD state={vaState} label={statusLabel} />
+
+        {/* Read docs mid-call — small, muted link in the top-right so
+            a caller who's never used Harvey before can pull up the
+            quick reference without hanging up. Click opens the same
+            CaseDocs overlay that lives on the idle page, now with an
+            added "How to talk to Harvey" cheat sheet section. */}
+        <motion.button
+          type="button"
+          onClick={() => setDocsOpen(true)}
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.75, ease: [0.19, 1, 0.22, 1] }}
+          className="group fixed right-6 top-6 z-30 inline-flex items-center gap-1.5 rounded-full border border-[var(--rule-strong)] bg-[rgba(255,255,255,0.82)] px-3 py-1.5 font-mono text-[9.5px] uppercase tracking-[0.32em] text-[var(--foreground-muted)] backdrop-blur transition-colors hover:border-[var(--foreground)] hover:text-[var(--foreground)]"
+          aria-label="Open Harvey how-to docs"
+        >
+          <BookOpen className="h-3 w-3" strokeWidth={2} />
+          Read docs
+        </motion.button>
 
         {/* Right-side supplementary panes */}
         <GlassPaneStack
@@ -613,6 +709,11 @@ export function CallInterface({ onEnd }: Props) {
         onSeeAlsoClick={handleSeeAlsoClick}
         onClose={() => setFocusedPaneId(null)}
       />
+
+      {/* Mid-call Read Docs — same dossier that lives on the idle
+          page, now also available during an active call. Rendered
+          outside the otr-dim wrapper so it stays full contrast. */}
+      <CaseDocs open={docsOpen} onClose={() => setDocsOpen(false)} />
       {/* DonnaFlash overlay removed — the full-screen shout was too
           much. The bit lives in Harvey's VOICE now: a short secretary
           line before he fires stock/news tools, ending in an audible,

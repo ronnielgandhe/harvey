@@ -52,8 +52,10 @@ function CityBlock() {
   }, []);
 
   // Advance the whole rig forward, then wrap by exactly one block-length
-  // when we reach the seam — the second block takes over the first's slot
-  // seamlessly because both contain identical geometry.
+  // when we reach the seam. BLOCK_LENGTH (310) is a clean multiple of
+  // the floor grid's cell size (10), so snapping back by 310 also
+  // aligns the floor grid to its own pattern. No visible reset on
+  // either layer.
   useFrame((_, delta) => {
     if (!groupRef.current) return;
     groupRef.current.position.z += delta * 6;
@@ -77,6 +79,16 @@ function CityBlock() {
         {buildings.map((b, idx) => (
           <Building key={`b-${idx}`} {...b} />
         ))}
+      </group>
+      {/* Floor grids ride along with the buildings. Two copies
+          per side, offset by one block-length each, so the grid
+          seam snaps in sync with the building seam. Cell size 10
+          divides BLOCK_LENGTH (310) evenly so no flicker on snap. */}
+      <SideGrid xCenter={120} width={170} />
+      <SideGrid xCenter={-120} width={170} />
+      <group position={[0, 0, -BLOCK_LENGTH]}>
+        <SideGrid xCenter={120} width={170} />
+        <SideGrid xCenter={-120} width={170} />
       </group>
     </group>
   );
@@ -214,10 +226,10 @@ export function SkylineBackdrop({ dimmed = false }: Props) {
       >
         <CameraDrift />
         <CityBlock />
-        {/* Floor grids only under building clusters — center corridor stays clean white */}
-        <SideGrid xCenter={120} width={170} />
-        <SideGrid xCenter={-120} width={170} />
-        {/* Heavier fog to fade the recycle pop and add depth */}
+        {/* Heavier fog to fade the recycle pop and add depth.
+            Floor grids are now rendered inside CityBlock so they
+            move with the buildings and don't sit still while the
+            skyline scrolls past them. */}
         <fog attach="fog" args={["#FAFAF8", 60, 280]} />
       </Canvas>
 

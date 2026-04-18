@@ -112,8 +112,15 @@ export function GlassPaneStack({
   focusedId,
   hideFocused,
 }: Props) {
+  // When Harvey has put evidence on the center stage, the side rails
+  // hide every content card. Was only hiding the focused pane itself,
+  // which meant a second card from the same tool call (news ticker
+  // while the article spotlight is focused, or siblings from the same
+  // turn) would still pop up on the right and visually compete with
+  // the center. One topic at a time. Tool-call pills still render so
+  // the user can see Harvey is working.
   const visible = hideFocused && focusedId
-    ? panes.filter((p) => p.id !== focusedId)
+    ? panes.filter((p) => p.kind === "tool_call")
     : panes;
   const toolCalls = visible.filter((p): p is ToolCallPane => p.kind === "tool_call");
   const cards = visible.filter(

@@ -102,28 +102,39 @@ export function BluejayPinwheel({
   const baseOpacity = Math.max(0.55, 1 - flownCount * 0.075);
   const isBursting = !!flyingBlade;
 
-  // Average volume drives a subtle overall scale pulse.
+  // Average volume drives a very subtle overall breath on the rotor
+  // body (NOT per keyframe — a single scalar so there's no flicker
+  // between burst and non-burst code paths).
   const avgVol =
     micBands && micBands.length > 0
       ? micBands.reduce((a, b) => a + b, 0) / micBands.length
       : 0;
-  const micScale = 1 + Math.min(0.06, avgVol * 0.25);
+  const micScale = 1 + Math.min(0.04, avgVol * 0.18);
 
   // Wing tips point UP at 12 o'clock (math-angle -90°) and step by 60°
-  // clockwise around the circle.
+  // clockwise around the circle. Each wing reacts to its own FFT band:
+  //   - radial push outward (the "throb"), larger than before so it
+  //     reads from across the room
+  //   - brighter opacity when hot (the "audio wave" glow)
+  //   - no uniform scale on the wing body — that was reading as the
+  //     wireframe edges thickening, which looked like deformation
   const wings = Array.from({ length: WING_COUNT }, (_, i) => {
     const mathAngle = -90 + i * 60; // -90, -30, 30, 90, 150, 210
-    const vol = Math.min(1, (micBands?.[i] ?? 0) * 2.2);
-    // Radial push outward in this wing's own direction.
-    const push = vol * (size * 0.07);
+    const vol = Math.min(1, (micBands?.[i] ?? 0) * 2.4);
+    const push = vol * (size * 0.11);
     const dx = Math.cos((mathAngle * Math.PI) / 180) * push;
     const dy = Math.sin((mathAngle * Math.PI) / 180) * push;
-    // Slight scale-up on the wing itself when its band is hot.
-    const scale = 1 + vol * 0.08;
     return {
       clip: wingClipPolygon(mathAngle),
-      translate: `translate(${dx}px, ${dy}px) scale(${scale})`,
-      opacity: 1,
+      translate: `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px)`,
+      // Wing fades up with its band. Base 0.82 so idle wings still
+      // read, peak 1.0 so hot wings are crisp black.
+      opacity: 0.82 + vol * 0.18,
+      // Soft drop-shadow brightens on hot bands. Gives the "audio
+      // wave" glow without redrawing the wireframe edges.
+      filter: `drop-shadow(0 0 ${(vol * 6).toFixed(2)}px rgba(26,26,26,${(
+        vol * 0.5
+      ).toFixed(2)}))`,
     };
   });
 
@@ -135,12 +146,13 @@ export function BluejayPinwheel({
       {/* The rotor — spins the whole wing assembly. Individual wing
           audio-reactive transforms happen INSIDE this, so they rotate
           with the logo and always push outward relative to the wing's
-          current orientation. */}
+          current orientation. Scale is a single scalar (not keyframes)
+          so there is no glitchy swing between animation states. */}
       <motion.div
         className="absolute inset-0"
         animate={{
           rotate: 360,
-          scale: isBursting ? [micScale, micScale * 1.06, micScale] : micScale,
+          scale: micScale,
         }}
         transition={{
           rotate: {
@@ -160,9 +172,10 @@ export function BluejayPinwheel({
         }}
       >
         {/* 6 clipped copies of the full logo. Each copy is masked to
-            ONE 60° pie slice — so you only see one wing per copy. The
+            ONE 60° pie slice, so you only see one wing per copy. The
             per-copy transform pushes that wing outward based on its
-            mic band's volume. */}
+            mic band's volume. Pure translate, no scale — wireframe
+            edges stay the same weight regardless of audio level. */}
         {wings.map((w, i) => (
           <div
             key={i}
@@ -171,8 +184,10 @@ export function BluejayPinwheel({
               clipPath: w.clip,
               WebkitClipPath: w.clip,
               transform: w.translate,
-              transition: "transform 70ms linear",
-              willChange: "transform",
+              opacity: w.opacity,
+              filter: w.filter,
+              transition: "transform 80ms linear, opacity 120ms linear, filter 120ms linear",
+              willChange: "transform, opacity, filter",
             }}
           >
             <WireframeLogoFull size={size} />

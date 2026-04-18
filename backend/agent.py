@@ -129,10 +129,25 @@ async def entrypoint(ctx: JobContext) -> None:
         aec_warmup_duration=0,
     )
 
+    # Impatient nudges Harvey drops when the caller goes quiet. The
+    # frontend publishes {type:"idle_nudge"} after ~28s of silence; we
+    # fire a random line through session.say() so it bypasses the LLM
+    # and lands in Harvey's voice immediately. Short, clock-aware,
+    # billable vibe.
+    HARVEY_NUDGES = [
+        "I don't have forever. What else.",
+        "I bill in six minute increments. Somewhere in your head is a question. Let it out.",
+        "You going to say something or should I bill you for the silence.",
+        "My time runs a thousand a minute. I recommend you give me something to work with.",
+        "Clock's running. Talk to me.",
+        "Still here. Are you.",
+        "Hey. You called me. Make it count.",
+    ]
+
     # Off-the-record lore drops. When the user flips the OTR toggle in
     # the UI, the frontend publishes {type:"otr_on"} on the data channel.
-    # That's our cue to have Harvey drop a Suits-world lore line —
-    # Mike, Jessica, Donna, Hardman, Louis — so OTR is theatre, not just
+    # That's our cue to have Harvey drop a Suits-world lore line
+    # (Mike, Jessica, Donna, Hardman, Louis) so OTR is theatre, not just
     # a dim screen. Session plays the line via session.say() so it
     # bypasses the LLM entirely (no chance of off-topic drift).
     HARVEY_LORE = [
@@ -154,19 +169,30 @@ async def entrypoint(ctx: JobContext) -> None:
             msg = json.loads(packet.data.decode("utf-8"))
         except Exception:
             return
-        if msg.get("type") != "otr_on":
+        msg_type = msg.get("type")
+
+        if msg_type == "otr_on":
+            line = random.choice(HARVEY_LORE)
+            log.info("OTR engaged, dropping lore: %r", line[:80])
+            # livekit-agents 1.x: session.say() returns a SpeechHandle
+            # (not a coroutine). It schedules the speech on the session's
+            # loop internally, so just call it and let it fire. Wrapping
+            # in asyncio.create_task() raises TypeError because a handle
+            # is not awaitable by create_task.
+            try:
+                session.say(line, allow_interruptions=True)
+            except Exception as exc:  # pragma: no cover — never crash the callback
+                log.warning("OTR lore say failed: %s", exc)
             return
-        line = random.choice(HARVEY_LORE)
-        log.info("OTR engaged — dropping lore: %r", line[:80])
-        # livekit-agents 1.x: session.say() returns a SpeechHandle
-        # (not a coroutine). It schedules the speech on the session's
-        # loop internally, so just call it and let it fire. Wrapping
-        # in asyncio.create_task() raises TypeError because a handle
-        # is not awaitable by create_task.
-        try:
-            session.say(line, allow_interruptions=True)
-        except Exception as exc:  # pragma: no cover — never crash the callback
-            log.warning("OTR lore say failed: %s", exc)
+
+        if msg_type == "idle_nudge":
+            line = random.choice(HARVEY_NUDGES)
+            log.info("Idle nudge firing: %r", line[:80])
+            try:
+                session.say(line, allow_interruptions=True)
+            except Exception as exc:  # pragma: no cover
+                log.warning("Idle nudge say failed: %s", exc)
+            return
 
     await session.start(
         agent=HarveyAgent(),

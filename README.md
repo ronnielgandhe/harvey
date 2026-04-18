@@ -1,8 +1,8 @@
 <div align="center">
 
-![Harvey — Counsel on call](./docs/hero.png)
+![Harvey, counsel on call](./docs/hero.png)
 
-# Harvey — Counsel, on call.
+# Harvey, counsel on call.
 
 **A voice-first legal agent. Canadian law meets live markets.**
 
@@ -10,320 +10,311 @@
 
 </div>
 
----
-
-> *Submission for the Bluejay take-home · April 2026*
-> *Built by **Ronniel Gandhe** · [demo video](./docs/demo.mp4) · [live site](https://harvey.vercel.app)*
-
-Harvey is a voice-first legal agent modelled on Gabriel Macht's Harvey Specter. You hit a call button, he picks up, and you can ask him three kinds of questions:
-
-1. **Canadian legal questions** → he cites the actual statute from a 12,000-page corpus of federal + Ontario law.
-2. **News / current-events questions** → he pulls live Google News headlines, spotlights the top article, and gives you a 1-sentence synthesis with attitude.
-3. **Public company / market questions** → he pulls a live Yahoo Finance quote (price, change, day range, 52-week range) and docks it on the left side of the screen.
-
-Every tool he calls triggers an on-screen visual pane — statute card on the right, news ticker + article spotlight on the right, stock terminal card on the left — so the UI stays in sync with what he's talking about in real time.
+> *Submission for the Bluejay take-home, April 2026.*
+> *Built by **Ronniel Gandhe**. [Demo video](./docs/demo.mp4) · [Live site](https://harvey.vercel.app)*
 
 ---
 
-## 1 · How it works, end-to-end
+## Why I built this
+
+I'm a student. My friends and I run into dumb legal situations constantly. Someone gets pulled over doing 50 over and panics about stunt driving. Someone's landlord serves an N12. Someone gets fired the week before payday. Someone shows up to a bar with a fake ID. The answer is always the same: we don't know, and nobody's calling a lawyer at 2am.
+
+So I built the lawyer that picks up.
+
+Harvey is voice-first, covers the law that students actually bump into (traffic, tenancies, employment, criminal code, cannabis, drugs, consumer), and grounds every legal answer in real statute text instead of vibes. On top of that he pulls live news when you ask about something in the headlines, live stock quotes when a company comes up, and Congressional trading disclosures when you want the insider angle, because once you start calling your lawyer you tend to start asking about other things too.
+
+The whole experience is themed as Gabriel Macht's Harvey Specter from Suits. His voice is cloned from the show. The landing page is staged as a Pearson Specter Litt x Bluejay collab. Every tool call drops an on-screen pane so you can see what he's citing while he talks.
+
+---
+
+## What you can ask him
+
+1. **Canadian legal questions.** He cites the actual statute from a 7-document, 2,806-chunk corpus of Ontario and federal law.
+2. **News and current events.** He pulls live Google News headlines, spotlights the top article, and narrates a one-sentence synthesis.
+3. **Public company questions.** He pulls a live Yahoo Finance quote (price, change, day range, 52-week range) and docks it on screen.
+4. **Insider trading disclosures.** Ask about Congressional activity on a ticker and he pulls the latest STOCK Act filings (QuiverQuant when a key is set, bundled dataset otherwise).
+
+Each one fires its own function tool and renders its own pane. The UI stays in sync with whatever Harvey is talking about in real time.
+
+---
+
+## 1. How it works, end to end
 
 ```
- ┌─────────────────────────────────┐
- │  Browser  (Next.js 16 · React)  │
- │  ┌─────────────────────────────┐│
- │  │ GET /api/token              ││──┐
- │  │  → LiveKit JWT for room     ││  │
- │  └─────────────────────────────┘│  │
- │  LiveKitRoom (WebRTC · audio)   │  │
- │  ├─ Mic bands → pinwheel wings  │  │
- │  ├─ Transcript → ticker         │  │
- │  └─ Data-channel → panes        │  │
- └─────────────┬───────────────────┘  │
-               │                      │
-         [WebSocket + WebRTC]         │
-               │                      │
- ┌─────────────▼───────────────────┐  │
- │  LiveKit Cloud (US East B)      │◄─┘
- │  ├─ Media router                │
- │  └─ Dispatches jobs to worker   │
- └─────────────┬───────────────────┘
-               │
-               │ agent worker (AW_…)
-               ▼
- ┌─────────────────────────────────┐
- │  Python agent process (local)   │
- │  ┌─ Deepgram STT (Nova-3)  ─────┤
- │  ├─ OpenAI LLM (gpt-4o-mini) ──┤
- │  ├─ ElevenLabs TTS (Turbo v2.5)─┤
- │  ├─ Silero VAD + turn detector  │
- │  └─ 3 function tools:           │
- │     ├─ cite_statute   → Chroma  │
- │     ├─ current_events → RSS     │
- │     └─ stock_ticker   → Yahoo   │
- └─────────────────────────────────┘
+ Browser (Next.js 16, React)
+   │
+   │  GET /api/token   (mint LiveKit JWT)
+   │  WebRTC audio up + data channel down
+   ▼
+ LiveKit Cloud  (us-east)
+   │
+   │  dispatches job to registered worker
+   ▼
+ Python agent (Fly.io, iad)
+   │   Deepgram Nova-3 STT
+   │   GPT-4o-mini (LLM + tool calling)
+   │   ElevenLabs Turbo v2.5 TTS (cloned Harvey voice)
+   │   Silero VAD
+   │
+   │   6 function tools:
+   │     cite_statute     → Chroma (RAG)
+   │     current_events   → Google News RSS
+   │     stock_ticker     → Yahoo Finance
+   │     check_the_hill   → QuiverQuant or bundled dataset
+   │     manage_screen    → UI pane control
+   │     end_call         → hangs up, triggers receipt
+   ▼
 ```
 
-### The call, step by step
+Flow of a single turn:
 
-1. **User hits the call button.** Frontend hits `/api/token`, which mints a LiveKit JWT for a fresh room.
-2. **LiveKitRoom connects** over WebRTC, starts the mic track.
-3. **LiveKit Cloud dispatches a job** to the registered agent worker.
-4. **Agent worker joins the room.** Plays a canned greeting line (`session.say(...)`) instantly so there's no first-response latency.
-5. **User speaks.** Deepgram STT streams the transcript back. LiveKit turn-detector signals end-of-turn.
-6. **LLM generates.** GPT-4o-mini sees the system prompt + conversation history. If the answer requires grounding, it calls one of the three function tools.
-7. **Tool fires.** Each tool (a) runs its external query (Chroma / RSS / Yahoo) and (b) publishes a JSON event over the LiveKit data channel.
-8. **Frontend reacts.** Data channel listener renders a glass pane for the tool's payload. A Jarvis-style status pill above the pinwheel updates continuously based on voice-assistant state (`Harvey listening` → `Consulting the bench` → `Harvey speaking`).
-9. **TTS streams.** ElevenLabs returns audio over WebRTC. The pinwheel's six wings react to mic bands via `useMultibandTrackVolume`.
+1. You hit **Call**. Frontend gets a JWT from `/api/token`, joins the LiveKit room.
+2. LiveKit dispatches the agent worker running on Fly.
+3. Worker joins and speaks a canned greeting line via `session.say(...)` the moment the audio stream connects, so first audio hits before the LLM is warm.
+4. You talk. Deepgram streams the transcript. Silero VAD + LiveKit turn detection signal end-of-turn.
+5. The LLM (gpt-4o-mini) decides whether to answer directly or call a tool.
+6. A tool fires. It publishes a JSON event over the LiveKit data channel. The frontend listens and spawns a pane via Framer Motion.
+7. Harvey speaks. The pinwheel's six wings react to the TTS audio via `useMultibandTrackVolume`.
 
 ---
 
-## 2 · RAG integration
+## 2. RAG (the part Faraz asked about)
 
-The hard requirement in the spec was *"specific fact in specific chapter"* retrieval over a large PDF. Harvey ships with 12,000+ pages across **31 Canadian + Ontario legal PDFs**, chunked and embedded into Chroma.
+### What's in the corpus
 
-### Stack
+7 English-only statutes scoped to the situations students actually hit. 2,806 chunks, ~610 MB Chroma index.
+
+| Source | Chunks | What it covers |
+|---|---|---|
+| Ontario Highway Traffic Act | 1,100 | Speeding, stunt driving, suspensions, G1/G2 rules |
+| Canada Criminal Code | 785 | Assault, theft, fraud, drugs, sexual offences |
+| Ontario Residential Tenancies Act | 392 | Leases, evictions (N12, N13), rent, roommates |
+| Ontario Employment Standards Act | 359 | Minimum wage, overtime, tips, termination |
+| Canada Controlled Drugs and Substances Act | 69 | Possession schedules beyond cannabis |
+| Canada Cannabis Act | 57 | Possession limits, public use, driving impaired |
+| Ontario Consumer Protection guides | 44 | Contracts, cooling off periods, returns |
+
+Iteration 1 was bigger but worse. I originally ingested 31 PDFs including bilingual Canadian federal statutes. The French and English were interleaved on the same page, which poisoned the embeddings and caused French chunks to surface even for English queries. Culled everything bilingual, re-ingested with an English-only filter, and backfilled with 5 statutes pulled directly from Justice Laws Canada (federal) and the Wayback CDX API (Ontario e-Laws).
+
+### Pipeline
+
+```
+cite_statute(query)
+    │
+    ▼
+ 1. classify_query(query)   LLM router (gpt-4o-mini)
+                            picks source, returns a
+                            refined semantic query
+    │
+    ▼
+ 2. Chroma similarity_search
+      if classifier confidence ≥ 0.6 → filter to that source
+      else → broad search with keyword boost
+    │
+    ▼
+ 3. noise filter (drop chunks < 60 chars)
+    │
+    ▼
+ 4. publish statute_card on data channel
+ 5. return top-1 text to LLM so Harvey can verbalize
+```
+
+**Two-stage retrieval was the big unlock.** Plain cosine similarity was failing on acronyms (N12 has no semantic link to "notice of termination") and jargon overlaps ("assault" kept pulling Highway Traffic Act because the Criminal Code dominates by chunk volume). Putting a classifier in front of Chroma lifted accuracy from ~40% to 98% across a 45-query test battery.
+
+### RAG stack
 
 | Layer | Choice | Why |
 |---|---|---|
-| Framework | **LangChain** (`langchain-community`, `langchain-chroma`) | Mature PDF loader + text splitter, minimum glue code |
-| PDF loader | `PyPDFLoader` | Pure Python, no Poppler dependency |
-| Chunking | `RecursiveCharacterTextSplitter` · 800 chars · 120 overlap | Respects paragraph boundaries; tuned so statute sections land in a single chunk most of the time |
-| Embedding | `text-embedding-3-small` (OpenAI) | Good quality/latency/cost tradeoff; 1536-dim |
-| Vector DB | **Chroma** (persisted to `data/chroma_db/`) | Embedded, zero-ops, good for take-home scope |
-| Similarity | Cosine (Chroma default) | |
-| Retrieval | `similarity_search(query, k=3)` | Top-3 chunks → model picks + verbalizes |
+| Framework | LangChain (`langchain-community`, `langchain-chroma`) | Mature loader + splitter, minimum glue |
+| Loader | `PyPDFLoader` for PDFs, `BeautifulSoup` for HTML | Pure Python, no Poppler |
+| Chunking | `RecursiveCharacterTextSplitter`, 1000 chars, 200 overlap | Respects paragraph boundaries. Most statute sections fit in a single chunk. |
+| Embedding | `text-embedding-3-small` (OpenAI), 1536 dim | Good latency + cost at quality this corpus needs |
+| Vector DB | Chroma, embedded, persisted to `data/chroma_db/` | Zero ops, baked into the Docker image |
+| Retrieval | `similarity_search(query, k=10)` + optional source filter | Top-1 chunk goes to the LLM, top-3 go to the card |
 
-### Ingestion (`backend/ingest.py`)
-
-```
-for pdf in data/corpus/*.pdf:
-    pages = PyPDFLoader(pdf).load()
-    chunks = splitter.split_documents(pages)
-    for c in chunks:
-        c.metadata |= infer_jurisdiction_and_section(c)
-    chroma.add_documents(chunks)
-```
-
-**Metadata enrichment.** Each chunk is tagged with:
-- `source` — the PDF filename
-- `page` — original page number
-- `jurisdiction` — inferred from the filename prefix (`canada_` / `ontario_` / `us_`)
-- `section` — regex-extracted section number when present
-
-That metadata is what lets the frontend render a proper legal-brief card with the `§ 200`, "Canada" jurisdiction badge, and source attribution.
-
-### Retrieval (`backend/rag.py`)
-
-Singleton `LegalRAG` wraps a persisted Chroma collection. Returns plain dicts so the tool layer doesn't depend on LangChain types.
-
-### How tool → RAG → UI wires up
-
-```python
-@function_tool
-async def cite_statute(ctx, query: str) -> str:
-    hits = rag.retrieve(query, k=3)
-    top = hits[0]
-    await _publish(ctx, {
-        "type": "statute_card",
-        "payload": {
-            "jurisdiction": top["jurisdiction"],
-            "section": top["section"],
-            "title":   top["title"],
-            "quote":   top["text"],
-            "source":  top["source"],
-        },
-    })
-    return f"{top['section']}: {top['text'][:220]}"
-```
-
-The string return goes back up to the LLM so Harvey can verbalize a summary. The data-channel event is independent — it renders even if the LLM is still generating.
+Each chunk is tagged with `source`, `page`, `jurisdiction`, and `section` (regex-extracted when present). That metadata is what lets the frontend render a proper legal-brief card with the section header, jurisdiction badge, and source attribution.
 
 ---
 
-## 3 · Three tools
+## 3. Tools
 
-| Tool | Triggers when | Side effect | Visual |
-|---|---|---|---|
-| `cite_statute(query)` | Any legal question requiring grounding | Vector search over 31 Canadian PDFs | Statute card, right column — § section in mono, quote in serif, source attribution |
-| `current_events(query)` | Recent / trending / time-sensitive queries | Google News RSS (Canadian feed, no API key) | Two panes: news ticker (5 headlines) + article spotlight (top story summary), right column |
-| `stock_ticker(symbol)` | Public company mentioned | Yahoo Finance chart endpoint (no API key) | Stock terminal card, left column — price, change %, 52-week range bar |
+The spec asks for one tool. Shipped six, because one tool is a dead UI.
 
-Each tool publishes its own event type on the LiveKit data channel. The frontend's `useDataChannel` listener decodes the payload and spawns a pane via Framer Motion's `AnimatePresence`. Panes dismiss on click or auto-fade after TTL for transient `tool_call` pills.
+| Tool | When it fires | What renders |
+|---|---|---|
+| `cite_statute` | Any legal question | Statute card with section, title, quote, source |
+| `current_events` | News, "recent", anything time-sensitive | News ticker + article spotlight |
+| `stock_ticker` | Public company mentioned | Stock card with price, change, day range, 52-week range |
+| `check_the_hill` | "insider", "Congress", "STOCK Act" keywords | Hill intel pane with recent disclosed trades |
+| `manage_screen` | Harvey wants to clear or expand a pane | UI action only, no render |
+| `end_call` | User says "bye", "gotta go", "hang up" | Triggers the receipt overlay and call exit |
 
-### Why three and not one?
-
-The spec asks for a single tool call. I shipped three because (a) each fits a distinct user intent cleanly, (b) stacking multiple panes from one call makes the UI feel alive rather than static, and (c) it lets the demo cover three different retrieval surfaces — static corpus, live web, live market — in 90 seconds.
-
----
-
-## 4 · Voice & personality
-
-### Voice
-
-- **ElevenLabs Instant Voice Cloning** of Gabriel Macht's voice, trained from ~10 minutes of Suits dialogue.
-- Model: **`eleven_turbo_v2_5`** (sub-200ms first-audio, noticeably better for conversational flow than the default multilingual model).
-- `VoiceSettings(stability=0.50, similarity_boost=0.85, style=0.0, speed=0.90, use_speaker_boost=True)` — tuned against ear-tested samples.
-
-### Personality
-
-The system prompt (`backend/prompts.py`) carries **37 verbatim Harvey Specter lines** from the show as cadence anchors. Explicit rules in the prompt:
-- Replies are 1–3 sentences, 15–45 words.
-- Land a quip every 2-3 turns, not every turn.
-- Always contractions. Never "I think / I'm not sure / maybe."
-- Off-topic → deflect with a zinger.
-- "Call ≥1 tool per non-social turn" — the UI depends on tool events firing.
-
-### First-audio latency
-
-A canned greeting (`session.say(...)`) fires the instant the user's audio stream connects. This hides the 600-900ms cold-start on the first LLM response — the caller hears "Goddamn it. You're back." before Harvey has even seen their first word.
+Each one publishes a JSON event over the LiveKit data channel. The frontend's `useDataChannel` listener decodes the payload and spawns a pane via `AnimatePresence`. Cycling evidence model: a new content pane auto-focuses center stage and evicts the previous one, so the screen stays legible instead of growing a wall of stale cards during a long call.
 
 ---
 
-## 5 · Frontend
+## 4. Voice and personality
 
-All of the glass-UI work lives in the frontend — this is where most of the craft went.
+**Voice.** ElevenLabs Instant Voice Cloning on a 10-minute sample of Gabriel Macht's dialogue from Suits. Served through the `eleven_turbo_v2_5` model for sub-200ms first audio. `VoiceSettings(stability=0.50, similarity_boost=0.85, style=0.0, speed=0.90, use_speaker_boost=True)`, tuned against ear-tested samples.
 
-| Component | What it does |
+**Personality.** The system prompt (`backend/prompts.py`) carries 37 verbatim Harvey Specter lines from the show as cadence anchors. Explicit rules baked in:
+
+- Replies are 1 to 3 sentences, 15 to 45 words.
+- Land a quip every two or three turns, not every turn.
+- Always contractions. Never "I think" or "I'm not sure".
+- Off-topic gets deflected with a zinger.
+- At least one tool call per non-social turn, so the UI stays alive.
+
+**First-audio trick.** The canned greeting (`session.say("Goddamn it. You're back.")`) fires the instant the user's audio connects, which hides 600 to 900ms of cold start and sells the character before the LLM even reads the first word.
+
+---
+
+## 5. Design decisions and tradeoffs
+
+### What I did differently
+
+**LLM-routed retrieval, not pure cosine.** Standard vector search was brittle on the query space students actually use. A small gpt-4o-mini call in front of Chroma classifies the domain and rewrites the query before the similarity search runs. Adds ~500ms to the first retrieval. Worth it.
+
+**One-topic panes, not a growing wall.** Each tool call evicts the previous content pane and takes center stage. A statute card gets replaced by the stock card on the next turn. Keeps the UI readable during a long call.
+
+**Instant greeting before the LLM is warm.** See the voice section above. This is the single biggest perceived-latency win in the whole system.
+
+**37 real Harvey lines in the prompt.** Baked show quotes into the system prompt so the LLM drifts toward Harvey's rhythm instead of corporate-assistant register.
+
+### Tradeoffs
+
+| Decision | Tradeoff |
 |---|---|
-| `PearsonHeader` | PSL × Bluejay collab header. Has three poses: splash (center, 2×), center idle (42vh), corner (bottom-left, 0.72× in call). Animates between them with framer-motion, pixel-based x/y measured at runtime so there's no unit-mismatch snapping. |
-| `BluejayPinwheel` | Wireframe pinwheel, audio-reactive. Six clipped copies of the brand PNG, each masked to a 60° pie-slice via CSS `clip-path: polygon(...)`. Inside a rotating container. Each wing pushes outward in its own radial direction based on its mic-band volume (six-band FFT via `useMultibandTrackVolume`). |
-| `SkylineBackdrop` | Ambient wireframe NYC skyline. Three.js via `@react-three/fiber`. Sparse buildings on both sides, clean center corridor. Infinite loop — two identical blocks back-to-back with a seamless wrap so the flythrough never visibly resets. |
-| `GlassPaneStack` | Split into a left column (stock cards) and a right column (tool pills + statute + news + article spotlight). Framer-motion layout animations on pane insert/remove. |
-| `StatusHUD` + `TickerLine` | Jarvis-style pill above the pinwheel that swaps state (`Listening` / `Consulting the bench` / `Harvey speaking`) and a live transcript ticker below it. |
-| `CaseBrief` | The "scroll-down" section you're reading right now, in React form. |
+| Chunk size 1000, overlap 200 | Most statute sections fit in one chunk. A few long Criminal Code sections get split. Acceptable, retrieval still surfaces the right section. |
+| `text-embedding-3-small` over `-large` | ~3x faster, ~5x cheaper. Quality is fine for this corpus. For high-stakes legal production I'd upgrade. |
+| Chroma embedded, not managed | Zero ops, persists to disk, baked into the image. Not horizontally scalable. For a product, Pinecone or pgvector. |
+| GPT-4o-mini, not GPT-4o | Sub-second first token, ~30x cheaper. Quality is enough because Harvey's output is short and structured (tool call + 1 to 3 sentences), not a long chain of reasoning. |
+| ElevenLabs Turbo v2.5, not multilingual v2 | Sub-200ms first audio, noticeably better prosody on short conversational lines. Slight quality drop on long sentences. Harvey doesn't have long sentences. |
+| Instant Voice Cloning, not Professional | Free and instant. Ceiling around 80 to 85% of the real Gabriel Macht. Pro cloning would need a biometric consent process we can't pass. |
+| LiveKit transport, not raw WebRTC | Turn detection, VAD, transcript streaming, data channel, audio routing all come for free. Tradeoff is one extra hop. Worth it by a lot. |
+| Fly.io for the agent, not AWS | Outbound-only worker means no ALB, no security group, no task definition song and dance. `fly-deploy.sh` is ~40 lines. AWS Fargate config is retained at `deploy/DEPLOY.md` as a fallback path. |
+| Bundled Congressional data fallback | QuiverQuant's live endpoint requires a paid key. `data/congress_trades.json` carries 38 real disclosures with real file dates so the tool always has something to show. Wire in a key and it calls Quiver first. |
+| Fixed corpus, no PDF upload | Spec marks upload as optional. The whole exercise is "specific fact on a known dataset", so I kept the corpus fixed and spent the time on UI polish and retrieval quality. |
 
-### Boot sequence
+### Assumptions
 
-A cinematic 6-second intro runs on every page load:
-1. White overlay drops, slash fades in.
-2. "PEARSON SPECTER LITT" emerges L→R via clip-path reveal.
-3. "/" slash animates next.
-4. "Bluejay" animates third.
-5. Assembly holds centered, then glides to the top-center hero slot.
-6. The Sonar-pulse call button fades in.
+- **Demo only, not actual legal advice.** Harvey says this out loud when a question gets heavy.
+- **Student-scoped law.** Corpus covers Ontario and federal statutes students actually run into. No immigration, income tax, family law, or US federal.
+- **English only.** Canadian federal statutes are bilingual; I strip French at ingest time.
+- **Single worker, single region.** The Fly machine lives in `iad`. LiveKit Cloud picks the closest relay for the browser.
 
 ---
 
-## 6 · Design decisions & trade-offs
+## 6. Stack
 
-| Decision | Trade-off |
+| Layer | Choice |
 |---|---|
-| **Chunk size 800 / overlap 120** | Works well for statute sections (typically one section per chunk). Struggles on statutes that include long lists — some intros get split from their provisions. |
-| **`text-embedding-3-small` (1536-dim)** | Faster + cheaper than `text-embedding-3-large`. Quality is enough for this corpus; for high-stakes legal retrieval you'd want the larger model. |
-| **Chroma (embedded)** | No ops burden, persisted to disk, runs inside the agent process. Trade-off: not horizontally scalable — if this were a product you'd move to a managed vector store (Pinecone / Qdrant / pgvector). |
-| **GPT-4o-mini, not GPT-4o** | 4o-mini is <1s first-token and 30× cheaper. Quality is enough because Harvey's output is structured (tool call + short reply) — he's not doing long reasoning chains. |
-| **ElevenLabs Turbo v2.5** | Lower latency + noticeably better prosody than the default multilingual TTS. Trade-off: slight quality drop vs `eleven_multilingual_v2` on long sentences. |
-| **Instant Voice Cloning, not Professional** | Free / instant. Ceiling ~80-85% of Gabriel Macht. Pro cloning would need a biometric consent process we can't pass. |
-| **LiveKit transport, not raw WebRTC** | Way less glue code. Gives you turn detection, VAD, transcript streaming, data channel, and audio routing for free. Trade-off: adds a hop through LiveKit Cloud. |
-| **RunContext room resolution via `session.room_io.room`** | A fallback-chain helper handles the v1.x API. The earlier `ctx.session.room` path broke silently for a while — caught it during a test when tools fired but no frontend events appeared. Solution: `_resolve_room(ctx)` checks `room_io.room` → `get_job_context().room` → legacy attributes. |
-
-### Deliberate non-goals
-
-- **Multi-turn case file building** — an early iteration had a 6-slot "Parties / Location / Matter / Date / Authority / Action" evidence wall that Harvey filled across turns. Cute visual, but it forced the conversation into a rigid shape. Scrapped in favour of tool-driven panes that react to what the user actually asks.
-- **PDF upload UI** — spec mentions it as optional. Harvey ships with a fixed corpus since the whole point is *specific fact in specific chapter* on a known dataset.
+| Voice transport | LiveKit Cloud |
+| STT | Deepgram Nova-3 |
+| LLM | GPT-4o-mini (also used for the RAG query classifier) |
+| TTS | ElevenLabs Turbo v2.5 |
+| VAD | Silero |
+| RAG framework | LangChain |
+| Vector DB | Chroma (embedded) |
+| Embedding | `text-embedding-3-small` (OpenAI) |
+| Frontend | Next.js 16 (App Router), React, Framer Motion, Tailwind, three.js |
+| Agent host | Fly.io (us-east, iad) |
+| Frontend host | Vercel |
 
 ---
 
-## 7 · Repo layout
+## 7. Local setup
 
-```
-harvey/
-├── backend/
-│   ├── agent.py            # LiveKit Agents worker + session wiring
-│   ├── tools.py            # cite_statute, current_events, stock_ticker
-│   ├── prompts.py          # Harvey system prompt + 37 cadence lines
-│   ├── rag.py              # Chroma wrapper
-│   ├── ingest.py           # PDF → chunks → Chroma
-│   ├── requirements.txt
-│   ├── .env.example
-│   └── README.md           # backend setup
-│
-├── frontend/
-│   ├── app/                # Next.js 16 App Router
-│   │   ├── page.tsx        # root — swaps Incoming ↔ CallInterface
-│   │   └── api/token/      # LiveKit JWT minter
-│   └── components/
-│       ├── PearsonHeader.tsx
-│       ├── BluejayPinwheel.tsx
-│       ├── SkylineBackdrop.tsx
-│       ├── IncomingCall.tsx
-│       ├── CallCTA.tsx
-│       ├── CallInterface.tsx
-│       ├── CaseBrief.tsx
-│       ├── GlassPaneStack.tsx
-│       └── panes/          # StatuteCard, NewsTicker, ArticleSpotlight, StockCard
-│
-├── data/
-│   ├── corpus/             # 31 PDFs, Canadian + Ontario + US statutes
-│   ├── harvey_lines/       # scraped Suits transcripts — ~270 deduped lines
-│   └── chroma_db/          # persisted vector index (gitignored, rebuild via ingest.py)
-│
-└── docs/
-    ├── hero.png            # landing page hero screenshot
-    └── demo.mp4            # 5-min walkthrough
-```
-
----
-
-## 8 · Local setup
-
-Requires Python 3.11+, Node 20+, and API keys for OpenAI, Deepgram, ElevenLabs, and a LiveKit Cloud project.
+Requires Python 3.11+, Node 20+, and keys for OpenAI, Deepgram, ElevenLabs, plus a LiveKit Cloud project.
 
 ### Backend
 
 ```bash
 cd backend
-python3.11 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-cp .env.example .env            # fill in keys
-python ingest.py                # builds data/chroma_db/ (~10 min, ~370 MB)
-python agent.py dev             # registers the worker
+cp .env.example .env                 # fill in keys
+python ingest_student_laws.py        # builds data/chroma_db (~3 min)
+python agent.py dev                  # registers the worker
 ```
 
 ### Frontend
 
 ```bash
 cd frontend
-cp .env.local.example .env.local # fill in LiveKit server URL + keys
+cp .env.local.example .env.local     # LiveKit URL + keys
 npm install
-npm run dev                      # http://localhost:3000
+npm run dev                          # http://localhost:3000
 ```
 
-Hit the Take-the-Call button. The boot sequence plays, PSL × Bluejay lands center, then the sonar button appears. Click it.
+Hit **Take the call**. Boot sequence plays, PSL x Bluejay lands center, the sonar button fades in. Click it.
 
 ---
 
-## 9 · Deploy
+## 8. Deploy
 
-Frontend on Vercel, agent on AWS ECS Fargate. LiveKit Cloud is the
-meeting point — both ends connect outbound to the same project.
+Frontend on Vercel, agent on Fly.io.
 
-- **Frontend → Vercel** — `frontend/` directory, three env vars (`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `NEXT_PUBLIC_LIVEKIT_URL`), ~8 minutes.
-- **Agent → AWS ECS Fargate** — containerized via `backend/Dockerfile`, image in ECR, single Fargate task at 0.5 vCPU / 1GB, secrets from AWS Secrets Manager. No inbound HTTP — the agent connects OUT to LiveKit Cloud, so no load balancer / ALB needed. ~$8/mo at idle.
+- **Frontend → Vercel.** `frontend/` directory, three env vars (`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `NEXT_PUBLIC_LIVEKIT_URL`). ~2 minutes.
+- **Agent → Fly.io.** `./deploy/fly-deploy.sh`. Builds the Docker image with the Chroma index baked in, pushes to Fly's registry, rolls the machine. Single region (iad), 1 vCPU, 1GB. Outbound only, no inbound HTTP surface needed.
+- **AWS path available.** Retained at `deploy/DEPLOY.md` (ECR + ECS Fargate + IAM) if you want to run Harvey on Amazon instead.
 
-**Full zoom script** with every command in order: [`deploy/DEPLOY.md`](./deploy/DEPLOY.md). Includes ECR build/push, IAM role + trust + inline policy, task definition, service creation, smoke test, redeploy flow, and tear-down.
+Files that keep deploy reproducible:
 
-Files that make this reproducible:
-
-- `backend/Dockerfile` — Python 3.12 slim, CPU-only torch for Silero VAD, Chroma index baked into the image.
-- `.dockerignore` (repo root) — excludes the 105MB corpus PDFs (already embedded in Chroma) and the frontend.
-- `deploy/task-definition.json` — Fargate task def template, secrets resolved at container boot.
-- `deploy/trust-policy.json` + `deploy/secrets-inline-policy.json` — minimal IAM so the task can pull from ECR + read `harvey/*` secrets only.
+- `backend/Dockerfile` with Python 3.12 slim, CPU-only torch for Silero VAD, Chroma index baked in.
+- `.dockerignore` excludes the 105MB raw corpus PDFs (already embedded in Chroma) and the frontend.
+- `deploy/fly-deploy.sh` is the primary path. `deploy/task-definition.json` and `deploy/trust-policy.json` are the AWS fallback.
 
 ---
 
-## 10 · What I'd do next
+## 9. Repo layout
 
-- **A README screenshot pass** — mostly done, needs an in-call screenshot once I've captured a good statute + news + stock moment in a single session.
-- **Real stock graphs** in the stock card (sparkline from the 5-day chart endpoint we already fetch).
-- **Harvey's "draft a demand letter"** as a 4th tool — writes in his voice, lands as a letterpress pane on the right.
-- **Second voice-mode toggle**: OpenAI Realtime (Marin) as a "fast mode" alternative to ElevenLabs.
-- **Chroma on EFS / S3** — today the vector index is baked into the Docker image (`data/chroma_db`). That's fine for a 580MB corpus but at 5GB+ I'd mount EFS or fetch-on-boot from S3 so image pushes stay under a minute.
+```
+harvey/
+├─ backend/
+│  ├─ agent.py                 LiveKit worker entry + session wiring
+│  ├─ tools.py                 6 function tools
+│  ├─ prompts.py               system prompt + 37 Harvey lines
+│  ├─ rag.py                   Chroma wrapper + LLM query classifier
+│  ├─ ingest_student_laws.py   current ingest (Justice Laws + e-Laws)
+│  ├─ reingest_canada.py       English-only cleanup script
+│  ├─ requirements.txt
+│  └─ Dockerfile
+├─ frontend/
+│  ├─ app/                     Next.js 16 App Router
+│  │  └─ api/token/            LiveKit JWT minter
+│  └─ components/              CallInterface, CaseDocs, panes, Pinwheel
+├─ data/
+│  ├─ corpus/                  source PDFs
+│  ├─ chroma_db/               vector index (gitignored, rebuild via ingest)
+│  └─ congress_trades.json     bundled Hill dataset
+├─ deploy/
+│  ├─ fly-deploy.sh            primary deploy path
+│  ├─ DEPLOY.md                AWS Fargate zoom script (fallback)
+│  └─ task-definition.json     Fargate task def (fallback)
+└─ docs/
+   ├─ hero.png
+   └─ demo.mp4                 5-minute walkthrough
+```
+
+---
+
+## 10. Submission checklist
+
+- [x] LiveKit Cloud voice transport
+- [x] Python agent with STT, LLM, TTS, VAD pipeline
+- [x] RAG over 7 statute sources (2,806 chunks) with source + page metadata
+- [x] Deployed to Vercel (frontend) and Fly.io (agent)
+- [x] React frontend with Start Call, End Call, and live transcript
+- [x] At least one tool call that fits the narrative (shipped 6)
+- [x] Personality and story (Harvey Specter, PSL x Bluejay)
+- [x] Short design doc (this file)
+- [x] 5-minute demo video
 
 ---
 
 <div align="center">
-<sub>© 2026 · Pearson Specter Litt × Bluejay · Confidential · Privileged</sub>
+<sub>© 2026. Pearson Specter Litt x Bluejay. Confidential. Privileged.</sub>
 </div>
