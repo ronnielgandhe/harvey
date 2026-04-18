@@ -11,7 +11,7 @@
 </div>
 
 > *Submission for the Bluejay take-home, April 2026.*
-> *Built by **Ronniel Gandhe**. [Demo video](./docs/demo.mp4) · [Live site](https://harvey-two.vercel.app/)*
+> *Built by **Ronniel Gandhe**. [Demo video](https://www.loom.com/share/2f671a72a279425d84bf5baa298d1efd) · [Live site](https://harvey-two.vercel.app/)*
 
 ---
 
