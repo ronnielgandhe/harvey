@@ -78,7 +78,7 @@ Flow of a single turn:
 
 ---
 
-## 2. RAG (the part Faraz asked about)
+## 2. RAG 
 
 ### What's in the corpus
 
