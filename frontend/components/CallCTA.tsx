@@ -104,28 +104,18 @@ function Sonar({ onAnswer, loading, disabled }: Omit<Props, "variant">) {
       whileTap={{ scale: 0.96 }}
       className="group pointer-events-auto relative flex flex-col items-center gap-4"
     >
-      {/* 3 expanding rings. Staggered by 0.9s each with a bright
-          first keyframe so the pulse is always visible, never an
-          invisible fade-out. Earlier "seamless" retime accidentally
-          left the rings at barely-there opacity for most of the
-          cycle, making the pulse look like it had disappeared. */}
+      {/* 3 expanding rings using a native CSS keyframe animation
+          (sonar-ring in globals.css). Each ring gets a NEGATIVE
+          animation-delay so it starts mid-cycle, staggering the three
+          rings evenly without the framer-motion keyframe-array pop
+          at the loop boundary. Native CSS wraps seamlessly. */}
       <div className="relative flex h-[150px] w-[150px] items-center justify-center">
         {[0, 1, 2].map((i) => (
-          <motion.span
+          <span
             key={i}
             aria-hidden
-            className="absolute inset-0 rounded-full border border-[var(--foreground)]"
-            initial={{ opacity: 0, scale: 0.7 }}
-            animate={{
-              opacity: [0.6, 0.25, 0],
-              scale: [0.7, 1.05, 1.5],
-            }}
-            transition={{
-              duration: 2.6,
-              delay: i * 0.9,
-              repeat: Infinity,
-              ease: "easeOut",
-            }}
+            className="sonar-ring absolute inset-0 rounded-full border border-[var(--foreground)]"
+            style={{ animationDelay: `${-0.9 * i}s` }}
           />
         ))}
 
