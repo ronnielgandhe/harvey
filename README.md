@@ -2,9 +2,7 @@
 
 ![Harvey, counsel on call](./docs/hero.png)
 
-# Harvey, counsel on call.
-
-**A voice-first legal agent. Canadian law meets live markets.**
+# harvey helps you with your legal questions.
 
 `LiveKit Cloud` · `OpenAI` · `Deepgram Nova-3` · `ElevenLabs Turbo v2.5` · `Chroma` · `Next.js 16`
 
