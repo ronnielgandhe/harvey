@@ -14,13 +14,10 @@ interface Props {
 
 const WING_COUNT = 6;
 
-/**
- * Wireframe-outline version of the full bluejay logo, rendered in an
- * SVG with an edge-detection filter. Used for each wing's clipped
- * instance (the outline is identical between wings — the clip-path
- * on the wrapper is what gives each wing its unique 60° slice).
- */
-function WireframeLogoFull({ size }: { size: number }) {
+const BLADE = "M140 140 C127 102 131 58 150 30 C168 62 164 106 140 140 Z";
+const BLADE_VEIN = "M140 140 C139 104 142 66 150 30";
+
+function WireframeRotor({ size }: { size: number }) {
   return (
     <svg
       viewBox="0 0 280 280"
@@ -28,45 +25,19 @@ function WireframeLogoFull({ size }: { size: number }) {
       height={size}
       aria-hidden
       preserveAspectRatio="xMidYMid meet"
-      className="block"
+      fill="none"
+      stroke="#1a1a1a"
+      strokeWidth={1.3}
+      strokeLinejoin="round"
+      strokeLinecap="round"
     >
-      <defs>
-        <filter
-          id="bluejay-wireframe"
-          x="-10%"
-          y="-10%"
-          width="120%"
-          height="120%"
-          colorInterpolationFilters="sRGB"
-        >
-          <feMorphology
-            in="SourceAlpha"
-            operator="dilate"
-            radius="0.7"
-            result="dilated"
-          />
-          <feMorphology
-            in="SourceAlpha"
-            operator="erode"
-            radius="0.2"
-            result="eroded"
-          />
-          <feComposite
-            in="dilated"
-            in2="eroded"
-            operator="out"
-            result="outline"
-          />
-          <feFlood floodColor="#1a1a1a" result="ink" />
-          <feComposite in="ink" in2="outline" operator="in" />
-        </filter>
-      </defs>
-      <image
-        href="/bluejay.png"
-        width={280}
-        height={280}
-        filter="url(#bluejay-wireframe)"
-      />
+      {Array.from({ length: WING_COUNT }, (_, i) => (
+        <g key={i} transform={`rotate(${i * 60} 140 140)`}>
+          <path d={BLADE} />
+          <path d={BLADE_VEIN} strokeWidth={0.8} opacity={0.55} />
+        </g>
+      ))}
+      <circle cx="140" cy="140" r="5" />
     </svg>
   );
 }
@@ -91,7 +62,7 @@ function wingClipPolygon(angleDeg: number): string {
   return `polygon(50% 50%, ${x1}% ${y1}%, ${x2}% ${y2}%)`;
 }
 
-export function BluejayPinwheel({
+export function VoicePinwheel({
   size = 280,
   flownBlades = [],
   flyingBlade = null,
@@ -190,7 +161,7 @@ export function BluejayPinwheel({
               willChange: "transform, opacity, filter",
             }}
           >
-            <WireframeLogoFull size={size} />
+            <WireframeRotor size={size} />
           </div>
         ))}
       </motion.div>
@@ -217,7 +188,7 @@ export function BluejayPinwheel({
           }}
           transition={{ duration: 0.85, ease: [0.4, 0.0, 0.2, 1] }}
         >
-          <WireframeLogoFull size={size * 0.28} />
+          <WireframeRotor size={size * 0.28} />
         </motion.div>
       )}
 

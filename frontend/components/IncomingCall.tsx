@@ -24,7 +24,6 @@ interface Props {
  * Idle landing screen.
  *
  * Two states:
- *   IDLE      — phone dead-center, directly under PSL × Bluejay header.
  *   POST-CALL — receipt on the left, "Call again" button on the right.
  *               Back on the receipt = instant snap back to centered phone.
  */

@@ -1,14 +1,14 @@
 # LiveKit Agents v1.x
-livekit-agents>=1.0,<2.0
-livekit-plugins-deepgram>=1.0
-livekit-plugins-openai>=1.0
-livekit-plugins-elevenlabs>=1.0
-livekit-plugins-silero>=1.0
-livekit-plugins-turn-detector>=1.0
+livekit-agents~=1.8.13
+livekit-plugins-deepgram~=1.8.13
+livekit-plugins-openai~=1.8.13
+livekit-plugins-anthropic~=1.8.13
+livekit-plugins-elevenlabs~=1.8.13
+livekit-plugins-silero~=1.8.13
+livekit-plugins-turn-detector~=1.8.13
 
 # RAG stack
 langchain>=0.3,<0.4
-langchain-openai>=0.2,<0.4
 langchain-community>=0.3,<0.4
 # Pinned: the persisted Chroma DB in data/chroma_db/ was built locally
 # with chromadb==1.5.7. If Fly installs a different version, the on-disk

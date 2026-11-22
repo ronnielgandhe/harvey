@@ -17,9 +17,7 @@ interface Props {
 }
 
 // Boot sequence timings (ms) — tuned for a deliberate, cinematic pace.
-// 0 → INTRO_FADE       : slash fades up from white; PSL + Bluejay stay hidden
-// 900 → 1700           : PSL slides out from behind the slash (left)
-// 1400 → 2200          : Bluejay slides out from behind the slash (right)
+// 900 → 1700           : the wordmark slides out from behind the slash (left)
 // INTRO_FADE → HOLD    : full assembly holds centered
 // HOLD → END           : long expo-out glide up to the hero slot
 const INTRO_FADE = 1400;
@@ -205,14 +203,12 @@ export function PearsonHeader({
           opacity: { duration: INTRO_FADE / 1000, ease: [0.22, 0.9, 0.25, 1] },
         }}
       >
-        {/* Editorial "disjointed" layout — PSL floats high, Bluejay drops
+        {/* Editorial "disjointed" layout — the wordmark floats high, Gandhe drops
             low, an oversized slash cuts diagonally between them. */}
         <div className="pointer-events-auto relative -ml-5 flex items-center gap-2">
-          {/* PSL appears FIRST, alone — rises up from below while fading
+          {/* The wordmark appears FIRST, alone — rises up from below while fading
               in. Expo-out curve for a filmic settle. Ends at ~2.0s. */}
-          <motion.img
-            src="/psl-logo.png"
-            alt="Pearson Specter Litt"
+          <motion.span
             initial={{ clipPath: "inset(0 100% 0 0)" }}
             animate={{ clipPath: "inset(0 0% 0 0)" }}
             transition={{
@@ -220,11 +216,13 @@ export function PearsonHeader({
               delay: 0.5,
               ease: [0.22, 0.9, 0.25, 1],
             }}
-            style={{ filter: "brightness(0)", translateY: 8 }}
-            className="h-[148px] w-auto flex-shrink-0"
-          />
-          {/* Slash + Bluejay reveal TOGETHER, left-to-right, as a single
-              "/Bluejay" unit. Starts while PSL is still settling its last
+            style={{ translateY: 8, fontSize: "96px", letterSpacing: "-0.03em" }}
+            className="flex-shrink-0 pr-[72px] font-display leading-none text-black"
+          >
+            Harvey
+          </motion.span>
+          {/* Slash + Gandhe reveal TOGETHER, left-to-right, as a single
+              "/Gandhe" unit. Starts while the wordmark is still settling its last
               150ms — keeps the hand-off seamless with no dead beat. */}
           <motion.span
             aria-hidden
@@ -245,9 +243,7 @@ export function PearsonHeader({
           >
             /
           </motion.span>
-          <motion.img
-            src="/bluejay-head.png?v=black"
-            alt="Bluejay"
+          <motion.span
             initial={{ clipPath: "inset(0 100% 0 0)" }}
             animate={{ clipPath: "inset(0 0% 0 0)" }}
             transition={{
@@ -255,9 +251,11 @@ export function PearsonHeader({
               delay: 2.0,
               ease: [0.22, 0.9, 0.25, 1],
             }}
-            style={{ translateY: 11 }}
-            className="h-[64px] w-auto flex-shrink-0"
-          />
+            style={{ translateY: 11, fontSize: "58px", fontWeight: 800, letterSpacing: "-0.045em" }}
+            className="flex-shrink-0 font-sans leading-none text-black"
+          >
+            Gandhe
+          </motion.span>
 
           {/* READ DOCS used to live here, nested inside this motion.div.
               That caused it to glide along with the logo during pose
@@ -270,7 +268,7 @@ export function PearsonHeader({
 
       {/* READ DOCS (standalone). Decoupled from the logo motion group
           so the end-of-call corner→center glide no longer drags the
-          button across the screen. Positioned under where the Bluejay
+          button across the screen. Positioned under where the Gandhe
           side of the center-pose logo lands. Fades in only when:
             - The initial splash glide is done
             - The header is in the "center" variant (idle, not in-call)
@@ -306,9 +304,7 @@ export function PearsonHeader({
           style={{
             position: "fixed",
             top: "calc(42vh + 68px)",
-            // Tucked directly beneath the Bluejay half of the
             // center-pose wordmark. +55px sits the button right below
-            // the "Bluejay" text instead of veering out past the
             // comfort zone like the old +150px did.
             left: "calc(50% + 55px)",
             zIndex: 55,

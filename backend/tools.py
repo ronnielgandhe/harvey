@@ -169,38 +169,20 @@ async def cite_statute(
     log.info("cite_statute(query=%r)", query)
     await _emit_tool_call(ctx, "cite_statute")
 
-    rag = get_rag()
-    # Retrieve a wider slate so we can filter bilingual/French chunks
-    # (the corpus has both the English and French version of every
-    # Canadian federal statute — French chunks sometimes outrank English
-    # on Chroma's cosine because they share procedural vocabulary).
     try:
-        scored_raw = rag._store.similarity_search_with_score(query, k=10)
+        rag = await asyncio.to_thread(get_rag)
     except Exception as exc:
-        log.exception("cite_statute: Chroma search failed: %s", exc)
-        scored_raw = []
-    log.info("cite_statute: Chroma returned %d raw hits", len(scored_raw))
-    if scored_raw:
-        log.info("cite_statute: best raw score=%.3f", scored_raw[0][1])
+        log.error("cite_statute: RAG unavailable: %s", exc)
+        return "The statute database is down. Answer from general knowledge, say you can't pull the exact section right now, keep it short."
+    try:
+        hits = await asyncio.to_thread(rag.retrieve, query, 4)
+    except Exception as exc:
+        log.exception("cite_statute: retrieval failed: %s", exc)
+        hits = []
+    hits = [h for h in hits if not _looks_french(h["text"]) and h["_raw_distance"] <= 1.5]
+    log.info("cite_statute: %d hits, top=%s", len(hits), [(h["source"], h["section"]) for h in hits[:3]])
 
-    # Drop French-heavy chunks so Harvey cites the English version. But
-    # if filtering strips EVERYTHING, fall back to the raw hits — a
-    # French citation beats a blank card.
-    scored = [(d, s) for d, s in scored_raw if not _looks_french(d.page_content)]
-    if not scored and scored_raw:
-        log.info("cite_statute: French filter stripped all hits; falling back to raw")
-        scored = scored_raw
-
-    # Confidence floor. Chroma L2 distance — loosened from 0.9 to 1.5
-    # because production embeddings score higher than local dev runs.
-    # Empty card was worse than a weak citation.
-    MIN_DISTANCE = 1.5
-    if scored and scored[0][1] > MIN_DISTANCE:
-        log.info("cite_statute: top score %.3f > floor %.3f — no confident match",
-                 scored[0][1], MIN_DISTANCE)
-        scored = []
-
-    if not scored:
+    if not hits:
         await _publish(ctx, {
             "type": "statute_card",
             "payload": {
@@ -218,88 +200,46 @@ async def cite_statute(
             },
         })
         return (
-            "No strong Canadian statute match. Speak general-principle "
-            "answer, be clear it's not a specific citation."
+            "NO MATCH in the statute database for this question. Give the "
+            "general rule from knowledge and say you don't have the exact "
+            "section in front of you."
         )
 
-    top_doc, top_score = scored[0]
-    top_text = top_doc.page_content
-    top_source = (top_doc.metadata or {}).get("source", "")
-    top_section = (top_doc.metadata or {}).get("section") or _guess_section(top_text, top_source)
-    top_title = (top_doc.metadata or {}).get("title") or _guess_title(top_text)
-    # Chroma returns L2 distance for cosine: 0 = identical, higher = worse.
-    # Convert to a 0..1 "confidence" — roughly 1 - distance/2.
-    confidence = max(0.0, min(1.0, 1.0 - float(top_score) / 2.0))
-    see_also_docs = [d for d, _ in scored[1:4]]
+    def card_fields(h: dict) -> dict:
+        src = h["source"]
+        sec_num = h["section"]
+        return {
+            "jurisdiction": "Canada" if src.startswith("canada_") else "Ontario" if src.startswith("ontario_") else "—",
+            "section": f"§ {sec_num}" if sec_num else _guess_section(h["text"], src),
+            "title": _shorten(h["title"] or _guess_title(h["text"]), 90),
+            "source": os.path.splitext(src)[0].replace("_", " "),
+            "quote": _shorten(h["text"], 360),
+            "full_text": h["text"],
+        }
 
-    # Find the French counterpart. Canadian federal statutes are
-    # bilingual — both the English and the French are equally official.
-    # Use the English chunk's own text as a query to surface the
-    # French version of the same section; filter for French-flagged
-    # chunks only.
-    french_text: str | None = None
-    try:
-        fr_scored = rag._store.similarity_search_with_score(top_text, k=10)
-        fr_hits = [(d, s) for d, s in fr_scored if _looks_french(d.page_content)]
-        fr_hits.sort(key=lambda x: x[1])
-        if fr_hits:
-            french_text = fr_hits[0][0].page_content
-    except Exception:
-        french_text = None
-
-    source = os.path.basename(top_source).replace("_", " ").replace(".pdf", "")
-    jurisdiction = (
-        "Canada" if "canada_" in top_source else
-        "Ontario" if "ontario_" in top_source else
-        "—"
-    )
-
-    see_also = []
-    for d in see_also_docs:
-        if isinstance(d, dict):
-            txt, md = d["text"], d
-        else:
-            txt = d.page_content
-            md = d.metadata or {}
-        sec = md.get("section") or _guess_section(txt, md.get("source", ""))
-        ttl = md.get("title") or _guess_title(txt)
-        src_path = md.get("source", "")
-        src = os.path.basename(src_path).replace("_", " ").replace(".pdf", "")
-        juris = (
-            "Canada" if "canada_" in src_path else
-            "Ontario" if "ontario_" in src_path else
-            "—"
-        )
-        # Include a short `quote` so the frontend can open a see-also pill
-        # as a new statute pane without another RAG round-trip.
-        see_also.append({
-            "section": sec,
-            "title": _shorten(ttl, 70),
-            "source": src,
-            "jurisdiction": juris,
-            "quote": _shorten(txt, 360),
-            "full_text": txt,
-        })
-
+    top = hits[0]
+    card = card_fields(top)
+    confidence = max(0.0, min(1.0, 1.0 - float(top["_raw_distance"]) / 2.0))
+    see_also = [card_fields(h) for h in hits[1:4]]
     await _publish(ctx, {
         "type": "statute_card",
         "payload": {
-            "jurisdiction": jurisdiction,
-            "section": top_section,
-            "title": _shorten(top_title, 90),
-            "quote": _shorten(top_text, 360),
-            "full_text": top_text,
-            # Bilingual — Canadian federal statutes are equally official
-            # in both languages. Frontend renders EN | FR side-by-side.
-            "french_quote": _shorten(french_text, 360) if french_text else None,
-            "french_full_text": french_text,
-            "source": source,
+            **card,
+            "french_quote": None,
+            "french_full_text": None,
             "confidence": confidence,
-            "see_also": see_also[:3],
+            "see_also": see_also,
         },
     })
 
-    return f"{jurisdiction} {top_section}: {_shorten(top_text, 220)}"
+    spoken_section = f"section {top['section']}" if top["section"] else "the relevant section"
+    others = ", ".join(sorted({f"s. {h['section']}" for h in hits[1:3] if h["section"] and h["section"] != top["section"]}))
+    return (
+        f"FOUND. The card on the caller's screen now shows {card['title']}, {spoken_section}. "
+        f"Base your answer on this text and name {spoken_section} if you name one"
+        + (f" (related: {others})" if others else "")
+        + f". Statute text: {_shorten(top['text'], 900)}"
+    )
 
 
 # ---------------------------------------------------------------------------

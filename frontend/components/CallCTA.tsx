@@ -6,7 +6,7 @@ import { ArrowRight, Loader2, PhoneCall } from "lucide-react";
 /**
  * Four design variants for the idle-page "Take the Call" CTA. Pick one
  * by passing `variant` as a prop. Built to fit the existing Harvey DNA:
- * wireframe skyline + Pearson Specter Litt serif + cream/black palette.
+ * wireframe skyline + serif wordmark + cream/black palette.
  *
  *   A) "counsel-card"  — a legal business card. Embossed monogram, two
  *                        thin rules, click anywhere on the card.
@@ -66,10 +66,10 @@ function CounselCard({
       <span className="absolute inset-x-8 bottom-4 h-px bg-[var(--rule-strong)]" />
 
       <span className="font-mono text-[9px] uppercase tracking-[0.45em] text-[var(--foreground-faint)]">
-        Pearson Specter Litt
+        Counsel on call
       </span>
       <span className="font-display text-[28px] leading-[1.1] text-[var(--foreground)]">
-        Harvey Specter
+        Harvey
       </span>
       <span className="font-display text-[11px] italic text-[var(--foreground-muted)]">
         Senior Partner · On retainer
@@ -96,7 +96,6 @@ function Sonar({ onAnswer, loading, disabled }: Omit<Props, "variant">) {
       disabled={disabled || loading}
       initial={{ opacity: 0, scale: 0.85 }}
       animate={{ opacity: 1, scale: 1 }}
-      // Hold until the PSL × Bluejay splash finishes its glide to the
       // center pose (~6.7s) before the phone scales in — keeps the
       // reveal order: logos land → signature writes in → phone appears.
       transition={{ duration: 0.9, delay: 7.0, ease: [0.19, 1, 0.22, 1] }}
@@ -192,7 +191,7 @@ function Terminal({ onAnswer, loading, disabled }: Omit<Props, "variant">) {
       className="group pointer-events-auto flex min-w-[360px] flex-col gap-1.5 rounded-md border border-[var(--foreground)]/70 bg-[var(--foreground)] px-5 py-4 text-left transition-colors hover:bg-[var(--crimson)]"
     >
       <span className="font-mono text-[9px] uppercase tracking-[0.4em] text-white/60">
-        PSL · DISPATCH
+        HARVEY · DISPATCH
       </span>
       <div className="flex items-center gap-2 font-mono text-[14px] text-white">
         <span className="text-white/60">$</span>

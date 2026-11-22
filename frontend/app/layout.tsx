@@ -49,7 +49,7 @@ const specialElite = Special_Elite({
 export const metadata: Metadata = {
   title: "Harvey — Counsel On Demand",
   description:
-    "A direct line to Harvey Specter. Real-time legal counsel, negotiation strategy, and case file drafting — by voice.",
+    "A direct line to Harvey. Real-time legal counsel by voice, with the statute on screen.",
 };
 
 export default function RootLayout({

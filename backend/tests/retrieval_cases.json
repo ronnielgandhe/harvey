@@ -1,0 +1,22 @@
+[
+  {"q": "My landlord gave me an N12 and says I have to move out in two weeks. Is that legal?", "source": "ontario_residential_tenancies_act.html", "sections": ["48"]},
+  {"q": "My landlord wants to raise my rent by ten percent this year. Can he do that?", "source": "ontario_residential_tenancies_act.html", "sections": ["120", "116"]},
+  {"q": "Can my landlord just walk into my apartment without telling me first?", "source": "ontario_residential_tenancies_act.html", "sections": ["27", "26"]},
+  {"q": "I'm two months behind on rent. What can my landlord do to me?", "source": "ontario_residential_tenancies_act.html", "sections": ["59"]},
+  {"q": "My landlord made me pay a damage deposit on top of last month's rent. Is that allowed?", "source": "ontario_residential_tenancies_act.html", "sections": ["105", "106"]},
+  {"q": "I worked 50 hours last week. Do I get overtime?", "source": "ontario_employment_standards_act.html", "sections": ["22"]},
+  {"q": "My boss fired me with no notice after two years at the job. What am I owed?", "source": "ontario_employment_standards_act.html", "sections": ["54", "57", "61"]},
+  {"q": "Does my employer have to give me a lunch break on an eight hour shift?", "source": "ontario_employment_standards_act.html", "sections": ["20"]},
+  {"q": "My manager takes a cut of the servers' tips. Is that legal?", "source": "ontario_employment_standards_act.html", "sections": ["14.2", "14.3", "14.4"]},
+  {"q": "I work part time. Do I still get vacation pay?", "source": "ontario_employment_standards_act.html", "sections": ["35.2", "33", "35.1"]},
+  {"q": "I got pulled over doing 50 over the speed limit. What happens now?", "source": "ontario_highway_traffic_act.html", "sections": ["172"]},
+  {"q": "I scraped a car in a parking lot and drove off. Am I in trouble?", "source": "ontario_highway_traffic_act.html", "sections": ["200"]},
+  {"q": "Can I text on my phone while I'm stopped at a red light?", "source": "ontario_highway_traffic_act.html", "sections": ["78.1"]},
+  {"q": "What happens if I get caught driving while my licence is suspended?", "source": "ontario_highway_traffic_act.html", "sections": ["53"]},
+  {"q": "I punched a guy at a bar last night. What could I be charged with?", "source": "canada_criminal_code.html", "sections": ["265", "266"]},
+  {"q": "My friend walked out of a store with a jacket he didn't pay for. What's the charge?", "source": "canada_criminal_code.html", "sections": ["322", "334"]},
+  {"q": "Someone keeps sending me texts saying they're going to hurt me. Is that a crime?", "source": "canada_criminal_code.html", "sections": ["264.1", "264"]},
+  {"q": "How much weed am I allowed to carry in public?", "source": "canada_cannabis_act.html", "sections": ["8"]},
+  {"q": "What's the penalty if I get caught with a gram of cocaine?", "source": "canada_controlled_drugs_and_substances_act.html", "sections": ["4"]},
+  {"q": "A guy at my door sold me a water heater rental contract and I want out. Can I cancel?", "source": "ontario_consumer_protection_business_guide.pdf|ontario_consumer_protection_act_guide.pdf", "sections": []}
+]

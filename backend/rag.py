@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
+from embeddings import OpenAIEmbeddings
 
 
 # PDFs ingested from multi-column layouts carry physical line-break
@@ -38,6 +38,56 @@ def _clean_chunk(text: str) -> str:
 
 logger = logging.getLogger("harvey.rag")
 
+_CITATION_RE = re.compile(r"(\d{4}),\s*c\.\s*([\w.\-]+)")
+_TRAILER_RE = re.compile(r"(\d{4}),\s*c\.\s*([\w.\-]+?),\s*s\.\s*(\d+(?:\.\d+)*)")
+_HEADER_RE = re.compile(r"^\[?(\d+(?:\.\d+)*)\.?$")
+_TOC_LINE_RE = re.compile(r"^\[?\d+(?:\.\d+)*\.(?:\(\d+(?:\.\d+)?\))?$")
+
+
+def _own_citation(metadata: dict) -> tuple[str, str] | None:
+    m = _CITATION_RE.search((metadata or {}).get("citation", "") or "")
+    return (m.group(1), m.group(2).rstrip(".")) if m else None
+
+
+def is_toc_chunk(text: str) -> bool:
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    toc = sum(1 for ln in lines if _TOC_LINE_RE.match(ln))
+    return toc >= 6 and toc >= len(lines) // 4
+
+
+def section_of(text: str, metadata: dict | None = None) -> str:
+    text = text.replace("\xa0", " ")
+    own = _own_citation(metadata or {})
+    events: list[tuple[int, str, str]] = []
+    if own:
+        for m in _TRAILER_RE.finditer(text):
+            if m.group(1) == own[0] and m.group(2).rstrip(".") == own[1]:
+                events.append((m.start(), "trailer", m.group(3)))
+    pos = 0
+    for line in text.splitlines(keepends=True):
+        hm = _HEADER_RE.match(line.strip())
+        if hm and float(hm.group(1).split(".")[0]) < 2000:
+            events.append((pos, "header", hm.group(1)))
+        pos += len(line)
+    events.sort()
+    weight: dict[str, int] = {}
+    order: list[str] = []
+    start, current = 0, None
+    for at, kind, sec in events:
+        owner = sec if kind == "trailer" else current
+        if owner:
+            weight[owner] = weight.get(owner, 0) + (at - start)
+            if owner not in order:
+                order.append(owner)
+        start, current = at, sec
+    if current:
+        weight[current] = weight.get(current, 0) + (len(text) - start)
+        if current not in order:
+            order.append(current)
+    if not weight:
+        return ""
+    return max(order, key=lambda k: weight[k])
+
 DEFAULT_PERSIST_DIR = os.getenv(
     "HARVEY_CHROMA_DIR",
     str((Path(__file__).resolve().parent.parent / "data" / "chroma_db")),
@@ -56,6 +106,7 @@ class LegalRAG:
     ) -> None:
         self.persist_dir = persist_dir
         self.collection_name = collection_name
+        self._section_index: Optional[dict] = None
         self._embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
         Path(persist_dir).mkdir(parents=True, exist_ok=True)
         self._store = Chroma(
@@ -77,6 +128,27 @@ class LegalRAG:
             persist_dir,
             doc_count,
         )
+
+    def _section_candidates(self, source: str, sections: list[str], query_vec: list[float]) -> list:
+        if self._section_index is None:
+            index: dict[tuple[str, str], list[str]] = {}
+            data = self._store._collection.get(include=["documents", "metadatas"])
+            for cid, text, md in zip(data["ids"], data["documents"], data["metadatas"]):
+                sec = section_of(text or "", md or {})
+                if sec:
+                    index.setdefault(((md or {}).get("source", ""), sec), []).append(cid)
+            self._section_index = index
+        ids = [cid for sec in sections for cid in self._section_index.get((source, sec), [])][:24]
+        if not ids:
+            return []
+        got = self._store._collection.get(ids=ids, include=["documents", "metadatas", "embeddings"])
+        from langchain_core.documents import Document
+
+        out = []
+        for text, md, emb in zip(got["documents"], got["metadatas"], got["embeddings"]):
+            dist = float(sum((a - b) ** 2 for a, b in zip(emb, query_vec)))
+            out.append((Document(page_content=text or "", metadata=md or {}), dist))
+        return out
 
     def retrieve(self, query: str, k: int = 4) -> list[dict]:
         """Return top-k chunks using a two-stage LLM-routed pipeline.
@@ -117,22 +189,26 @@ class LegalRAG:
             where = {"source": routing["source"]}
 
         try:
-            raw = self._store.similarity_search_with_score(
-                search_query,
+            query_vec = self._embeddings.embed_query(search_query)
+            raw = self._store.similarity_search_by_vector_with_relevance_scores(
+                query_vec,
                 k=max(k * 4, 16),
                 filter=where,
             )
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception("Chroma retrieval failed: %s", exc)
             return []
+        predicted = routing.get("sections") or []
+        if where is not None and predicted:
+            raw = raw + self._section_candidates(routing["source"], predicted, query_vec)
 
         # Fallback: if filtered search returns nothing (e.g. classifier
         # picked a source with no matching chunks), retry unfiltered.
         if not raw and where is not None:
             logger.info("retrieve: filtered search empty, retrying unfiltered")
             try:
-                raw = self._store.similarity_search_with_score(
-                    search_query, k=max(k * 4, 16)
+                raw = self._store.similarity_search_by_vector_with_relevance_scores(
+                    query_vec, k=max(k * 4, 16)
                 )
             except Exception:
                 return []
@@ -140,13 +216,18 @@ class LegalRAG:
         keyword_sources = _route_query_to_sources(query)
 
         scored: list[tuple[float, dict]] = []
+        seen: set[str] = set()
         for doc, distance in raw:
             md = doc.metadata or {}
             source = md.get("source", "unknown")
             text = _clean_chunk(doc.page_content)
-            if _is_empty_chunk(text):
+            if text in seen or _is_empty_chunk(text) or is_toc_chunk(text):
                 continue
+            seen.add(text)
+            section = md.get("section") or section_of(doc.page_content, md)
             rank_score = distance
+            if section and section in predicted:
+                rank_score -= 0.3 if section == predicted[0] else 0.2
             if keyword_sources and source in keyword_sources:
                 rank_score -= 0.15
             alpha_ratio = sum(c.isalpha() for c in text) / max(len(text), 1)
@@ -156,7 +237,7 @@ class LegalRAG:
                 "source": source,
                 "page": md.get("page", 0),
                 "jurisdiction": md.get("jurisdiction", "Unknown"),
-                "section": md.get("section", ""),
+                "section": section,
                 "title": md.get("title", ""),
                 "_score": rank_score,
                 "_raw_distance": distance,
@@ -352,7 +433,10 @@ _CLASSIFIER_SYSTEM = (
     + "\n".join(f"- {src}: {desc}" for src, desc in _CORPUS_SOURCES)
     + "\n\nReturn JSON with keys: source (one of the exact filenames "
     "above or empty string if none fit), confidence (0..1), "
-    "refined_query (a short query optimized for vector search). "
+    "refined_query (a short query optimized for vector search), "
+    "sections (up to 3 section numbers of that statute most likely to "
+    "hold the operative rule, as strings like \"48\" or \"14.2\", most "
+    "likely first; empty list if unsure). "
     "Pick the most specific source. If the question spans multiple "
     "areas, pick the primary one. Return only JSON."
 )
@@ -368,6 +452,29 @@ def _get_classifier_client():
     return _classifier_client
 
 
+_claude_client = None
+
+
+def _classify_with_claude(query: str) -> dict:
+    import json as _json
+
+    global _claude_client
+    if _claude_client is None:
+        import anthropic
+
+        _claude_client = anthropic.Anthropic(timeout=8.0, max_retries=1)
+    resp = _claude_client.messages.create(
+        model=os.getenv("HARVEY_ROUTER_MODEL", "claude-haiku-5-5"),
+        max_tokens=300,
+        system=_CLASSIFIER_SYSTEM,
+        messages=[{"role": "user", "content": query}],
+        thinking={"type": "disabled"},
+        output_config={"effort": "low"},
+    )
+    text = "".join(b.text for b in resp.content if b.type == "text")
+    return _json.loads(text[text.find("{"): text.rfind("}") + 1] or "{}")
+
+
 def classify_query(query: str) -> dict:
     """Use gpt-4o-mini to decide which source this query targets and
     return a search-optimized rewrite of the question.
@@ -377,22 +484,25 @@ def classify_query(query: str) -> dict:
     On any failure falls back to {"source": "", "confidence": 0.0,
     "refined_query": query} so retrieval still works.
     """
-    if not os.getenv("OPENAI_API_KEY"):
+    if not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")):
         return {"source": "", "confidence": 0.0, "refined_query": query}
     try:
-        client = _get_classifier_client()
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": _CLASSIFIER_SYSTEM},
-                {"role": "user", "content": query},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.0,
-            max_tokens=160,
-        )
         import json as _json
-        data = _json.loads(resp.choices[0].message.content or "{}")
+        if os.getenv("ANTHROPIC_API_KEY"):
+            data = _classify_with_claude(query)
+        else:
+            client = _get_classifier_client()
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": _CLASSIFIER_SYSTEM},
+                    {"role": "user", "content": query},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.0,
+                max_tokens=200,
+            )
+            data = _json.loads(resp.choices[0].message.content or "{}")
         source = str(data.get("source", "")).strip()
         confidence = float(data.get("confidence", 0.0) or 0.0)
         refined = str(data.get("refined_query", "")).strip() or query
@@ -401,10 +511,12 @@ def classify_query(query: str) -> dict:
         if source and source not in known:
             source = ""
             confidence = 0.0
+        sections = [str(x).strip().lstrip("s.").strip() for x in (data.get("sections") or []) if str(x).strip()][:3]
         return {
             "source": source,
             "confidence": max(0.0, min(1.0, confidence)),
             "refined_query": refined,
+            "sections": sections,
         }
     except Exception as exc:  # pragma: no cover
         logger.warning("classify_query failed: %s", exc)

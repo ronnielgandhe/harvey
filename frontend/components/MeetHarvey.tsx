@@ -4,14 +4,13 @@ import { motion } from "framer-motion";
 import { useMemo } from "react";
 
 /**
- * Signed "meet Harvey Specter" block. Sits on the LEFT of the idle
+ * Signed "meet Harvey" block. Sits on the LEFT of the idle
  * hero.
  *
  * Two reveal modes:
  *
  *   CINEMATIC (first page load only)
  *     Starts at 6.9s mark, each line wipes in with a clip-path from
- *     left to right — matches the PSL × Bluejay glide-to-center pose
  *     so the signature lands like a sign-off on the logo.
  *
  *   INSTANT (every subsequent remount — e.g. "Back" from receipt)
@@ -95,11 +94,11 @@ export function MeetHarvey() {
                 transformOrigin: "left bottom",
               }}
             >
-              Specter
+              On call
             </span>
           </motion.div>
 
-          <span className="sr-only">meet Harvey Specter</span>
+          <span className="sr-only">meet Harvey</span>
         </div>
       </div>
     );
@@ -168,11 +167,11 @@ export function MeetHarvey() {
               transformOrigin: "left bottom",
             }}
           >
-            Specter
+            On call
           </span>
         </motion.div>
 
-        <span className="sr-only">meet Harvey Specter</span>
+        <span className="sr-only">meet Harvey</span>
       </div>
     </div>
   );
