@@ -58,7 +58,7 @@ const PIPELINE = [
   { step: "Turn detect", tool: "LiveKit + Silero" },
   { step: "LLM", tool: "GPT-4o-mini" },
   { step: "RAG", tool: "Chroma · text-embedding-3-small" },
-  { step: "TTS", tool: "ElevenLabs · Gabriel Macht clone" },
+  { step: "TTS", tool: "ElevenLabs · stock voice" },
   { step: "Transport", tool: "LiveKit Cloud · WebRTC" },
 ];
 
@@ -117,7 +117,7 @@ export function CaseBrief() {
         className="pointer-events-none absolute inset-x-0 -top-40 z-10 h-56 bg-gradient-to-b from-[var(--background)] via-[var(--background)]/85 to-transparent"
       />
 
-      {/* "Today at PSL" live headline pill */}
+      {/* "Today on the line" live headline pill */}
       {headline && (
         <motion.a
           href={headline.link || "#"}
@@ -134,7 +134,7 @@ export function CaseBrief() {
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--crimson)]" />
             </span>
             <span className="font-mono text-[9px] uppercase tracking-[0.42em] text-[var(--foreground-faint)]">
-              Today at PSL
+              Today on the line
             </span>
           </span>
           <span className="truncate font-display text-[13px] italic text-[var(--foreground)] group-hover:underline">
@@ -243,12 +243,10 @@ export function CaseBrief() {
       {/* 04 — on set (voice + personality) */}
       <Numbered number="04" label="On set">
         <p className="max-w-[640px] text-[15px] leading-relaxed text-[var(--foreground-muted)]">
-          Harvey speaks with a cloned voice of{" "}
-          <em className="text-[var(--foreground)]">Gabriel Macht</em> — trained
-          on 10 minutes of Suits dialogue through ElevenLabs Instant Voice
-          Cloning. His system prompt carries 37 real show lines as cadence
-          anchors, so he lands a quip every 2-3 turns without it feeling
-          forced. A LiveKit Silero VAD keeps the turn-taking natural.
+          Harvey speaks with a stock ElevenLabs voice, tuned deep, dry and
+          quick. No cloning. His persona is written from scratch: short
+          sentences, verdict first, a dry line every couple of turns. A
+          LiveKit Silero VAD keeps the turn-taking natural.
         </p>
         <div className="mt-5 flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
@@ -263,7 +261,7 @@ export function CaseBrief() {
               strokeWidth={2}
             />
             <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-[var(--foreground-muted)]">
-              37 lines of cadence anchors
+              Original persona, no scripts
             </span>
           </div>
         </div>
@@ -272,7 +270,7 @@ export function CaseBrief() {
       {/* Disposition / fine print */}
       <div className="mt-20 flex flex-col items-start gap-3 border-t border-[var(--rule-strong)] pt-6 md:flex-row md:items-center md:justify-between">
         <div className="font-mono text-[10px] uppercase tracking-[0.4em] text-[var(--foreground-faint)]">
-          © 2026 · Pearson Specter Litt · Confidential · Privileged
+          © 2026 · Counsel on call · Confidential · Privileged
         </div>
         <a
           href="https://github.com/"

@@ -54,12 +54,11 @@ export async function GET(req: NextRequest) {
   const identity = `client-${Math.random().toString(36).slice(2, 10)}`;
 
   const requested = req.nextUrl.searchParams.get("brain") ?? "";
-  const brain = BRAINS.has(requested) ? requested : "opus";
 
   const at = new AccessToken(apiKey, apiSecret, {
     identity,
     ttl: 60 * 10,
-    attributes: { "harvey.brain": brain },
+    attributes: BRAINS.has(requested) ? { "harvey.brain": requested } : {},
   });
 
   at.addGrant({

@@ -6,7 +6,7 @@ import type { ReceiptCounts } from "./CaseReceipt";
 
 /**
  * Compact itemized receipt shown in the LEFT slot (where "Meet Harvey"
- * lives) the moment a call ends. White paper, hairline rules, PSL
+ * lives) the moment a call ends. White paper, hairline rules, a
  * letterhead — the same billing language as the big modal receipt but
  * sized to sit beside the "Call again" button on the right.
  *
@@ -110,7 +110,7 @@ export function PostCallReceipt({ durationSec, counts, onBack }: Props) {
       className="relative w-full rounded-[2px] border border-[var(--rule-strong)] bg-white px-8 pb-7 pt-6 shadow-[0_22px_44px_-18px_rgba(20,18,14,0.22),0_2px_6px_rgba(0,0,0,0.04)]"
     >
       {/* Back row — lives ABOVE the letterhead so it has its own
-          vertical gutter instead of crowding the PSL wordmark. */}
+          vertical gutter instead of crowding the wordmark. */}
       {onBack && (
         <div className="mb-5 flex items-center">
           <button
@@ -129,7 +129,7 @@ export function PostCallReceipt({ durationSec, counts, onBack }: Props) {
       <div className="flex items-baseline justify-between border-b-2 border-[var(--foreground)] pb-3">
         <div>
           <div className="font-display text-[18px] font-bold leading-tight text-[var(--foreground)]">
-            Pearson Specter Litt
+            Counsel on Call
           </div>
           <div className="mt-0.5 font-mono text-[8.5px] uppercase tracking-[0.42em] text-[var(--foreground-muted)]">
             Statement of services

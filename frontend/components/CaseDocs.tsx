@@ -126,7 +126,7 @@ export function CaseDocs({ open, onClose }: Props) {
                 Back
               </button>
               <span className="font-mono text-[9.5px] uppercase tracking-[0.42em] text-[var(--foreground-faint)]">
-                PSL · Case file · 2026
+                Harvey · Case file · 2026
               </span>
             </div>
 
@@ -222,15 +222,15 @@ export function CaseDocs({ open, onClose }: Props) {
                       </li>
                       <li className="flex gap-2">
                         <span aria-hidden className="mt-[7px] h-[3px] w-[3px] shrink-0 rounded-full bg-[var(--foreground)]" />
-                        <span><span className="font-semibold text-[var(--foreground)]">Ask for market stuff</span> and you might catch him yelling "DONNAAAAA" before the quote loads.</span>
+                        <span><span className="font-semibold text-[var(--foreground)]">Ask for market stuff</span> and you might hear him grumble that he has people for this before the quote loads.</span>
                       </li>
                       <li className="flex gap-2">
                         <span aria-hidden className="mt-[7px] h-[3px] w-[3px] shrink-0 rounded-full bg-[var(--foreground)]" />
-                        <span><span className="font-semibold text-[var(--foreground)]">Off the record.</span> Flip the OTR toggle and he drops a Suits-world lore line.</span>
+                        <span><span className="font-semibold text-[var(--foreground)]">Off the record.</span> Flip the OTR toggle and he tells you a war story from his closing days.</span>
                       </li>
                       <li className="flex gap-2">
                         <span aria-hidden className="mt-[7px] h-[3px] w-[3px] shrink-0 rounded-full bg-[var(--foreground)]" />
-                        <span><span className="font-semibold text-[var(--foreground)]">Go silent too long</span> and he'll nudge you. He bills in six-minute increments.</span>
+                        <span><span className="font-semibold text-[var(--foreground)]">Go silent too long</span> and he'll nudge you. The meter is running.</span>
                       </li>
                     </ul>
                   </div>
@@ -274,15 +274,14 @@ export function CaseDocs({ open, onClose }: Props) {
                   <span className="font-semibold text-[var(--foreground)]">
                     Voice:
                   </span>{" "}
-                  cloned via{" "}
+                  a stock{" "}
                   <span className="font-semibold text-[var(--foreground)]">
-                    ElevenLabs Instant Voice Cloning
+                    ElevenLabs
                   </span>{" "}
-                  on a 10-minute sample of Gabriel Macht dialogue from Suits,
-                  served through the Turbo v2.5 realtime TTS model. His
-                  system prompt carries 37 real show lines as cadence anchors,
-                  so he lands a quip every few turns without sounding
-                  scripted.
+                  voice tuned deep and quick, served through the Turbo v2.5
+                  realtime TTS model. No cloning. His persona is written from
+                  scratch, so he lands a dry line every few turns without
+                  sounding scripted.
                 </p>
               </div>
             </div>

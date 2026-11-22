@@ -71,6 +71,25 @@ BRAINS = {
     "haiku": "claude-haiku-5-5",
 }
 
+VOICE_REQUEST = {
+    "opus": ({"output_config": {"effort": "low"}}, 1200),
+    "sonnet": ({"thinking": {"type": "between_tools"}, "output_config": {"effort": "low"}}, 300),
+    "haiku": ({"thinking": {"type": "disabled"}, "output_config": {"effort": "low"}}, 300),
+}
+
+if lk_anthropic is not None:
+
+    class VoiceClaude(lk_anthropic.LLM):
+        def __init__(self, *, request_extra: dict, **kwargs) -> None:
+            super().__init__(**kwargs)
+            self._request_extra = request_extra
+
+        def chat(self, *, extra_kwargs=None, **kwargs):
+            merged = dict(self._request_extra)
+            if isinstance(extra_kwargs, dict):
+                merged.update(extra_kwargs)
+            return super().chat(extra_kwargs=merged, **kwargs)
+
 
 DEFAULT_VOICE_ID = "nPczCjzI2devNBz1zQrb"
 
@@ -96,19 +115,23 @@ def missing_config() -> tuple[list[str], list[str]]:
 
 
 def build_llm(choice: str):
-    brain = choice if choice in BRAINS else os.getenv("HARVEY_BRAIN", "opus")
+    brain = choice if choice in BRAINS else os.getenv("HARVEY_BRAIN", "haiku")
     chain = []
     if lk_anthropic is not None and os.getenv("ANTHROPIC_API_KEY") and brain in BRAINS:
+        extra, max_tokens = VOICE_REQUEST[brain]
         chain.append(
-            lk_anthropic.LLM(
+            VoiceClaude(
+                request_extra=extra,
                 model=BRAINS[brain],
-                max_tokens=1024,
+                max_tokens=max_tokens,
                 parallel_tool_calls=True,
                 caching="ephemeral",
             )
         )
     if os.getenv("OPENAI_API_KEY"):
-        chain.append(openai.LLM(model="gpt-4o-mini", parallel_tool_calls=True, temperature=0.7))
+        chain.append(
+            openai.LLM(model="gpt-4o-mini", parallel_tool_calls=True, temperature=0.7, max_completion_tokens=300)
+        )
     log.info("LLM chain: %s", [m.model for m in chain])
     if len(chain) == 1:
         return chain[0]
@@ -216,31 +239,26 @@ async def entrypoint(ctx: JobContext) -> None:
     # billable vibe.
     HARVEY_NUDGES = [
         "I don't have forever. What else.",
-        "I bill in six minute increments. Somewhere in your head is a question. Let it out.",
-        "You going to say something or should I bill you for the silence.",
-        "My time runs a thousand a minute. I recommend you give me something to work with.",
+        "Meter's running. Somewhere in there is a question. Let it out.",
+        "You going to say something, or do I invoice the silence.",
         "Clock's running. Talk to me.",
         "Still here. Are you.",
-        "Hey. You called me. Make it count.",
+        "You called me. Make it count.",
     ]
 
     # Off-the-record lore drops. When the user flips the OTR toggle in
     # the UI, the frontend publishes {type:"otr_on"} on the data channel.
-    # That's our cue to have Harvey drop a Suits-world lore line
-    # (Mike, Jessica, Donna, Hardman, Louis) so OTR is theatre, not just
-    # a dim screen. Session plays the line via session.say() so it
+    # Session plays the line via session.say() so it
     # bypasses the LLM entirely (no chance of off-topic drift).
     HARVEY_LORE = [
-        "Off the record? I knew a guy named Mike. Smartest son of a bitch I ever met. Never saw the inside of a law school. Still beat every single lawyer I put him up against.",
-        "Off the record? Let me tell you about Daniel Hardman. That man cost me three years of my life and I'd burn another three to put him back in the ground.",
-        "Off the record, Jessica used to say making partner is the easy part. Keeping partner? That's where they find out what you're made of. She wasn't wrong.",
-        "Off the record — Donna knows everything. Not most things. Everything. If she walks into a room and smiles at you, you're either about to win big or get fired. There is no third option.",
-        "Off the record? The day I met Mike, he was running from the cops with a briefcase full of weed. Worst interview of my life. Best hire I ever made.",
-        "Off the record, Louis Litt once cried in my office because I wouldn't let him be best man at my hypothetical wedding. I don't even want to get married. He cried anyway.",
-        "Off the record — I beat Cameron Dennis. The man who made me. And I'd do it again tomorrow. Twice if I had to.",
-        "Off the record? Scottie told me I was married to the job. She wasn't wrong. Still don't know if I should've quit. Probably not.",
-        "Off the record — half this firm owes me. The other half owes me more. That's not arrogance. That's math.",
-        "Off the record, I once won a case on a bet with Hardman. A bet. That's how sure I was. That's how sure I still am.",
+        "Off the record? First deal I ever closed, the other side brought eleven lawyers. I brought a coffee. Guess who left with the building.",
+        "Off the record, the best negotiating move I know is saying nothing. People hate silence. They fill it with concessions.",
+        "Off the record? I once settled a case in an elevator. Forty floors. He wanted to get off at thirty. He didn't.",
+        "Off the record, every contract has one sentence that matters. Everybody else reads the other forty pages.",
+        "Off the record? I don't bluff. I just let people assume I'm bluffing. It's cheaper.",
+        "Off the record, my first boss told me never to walk into a room without knowing how I walk out. Still the only advice I've taken.",
+        "Off the record? I've lost exactly once. I remember the date, the judge and what I had for breakfast. That's why it was once.",
+        "Off the record, half this city owes me a favor. The other half doesn't know it yet.",
     ]
 
     @session.on("error")
@@ -313,11 +331,10 @@ async def entrypoint(ctx: JobContext) -> None:
     # Signature greeting — hard-coded, sent straight to TTS so it fires
     # the instant the user connects. No LLM round-trip, no lag.
     HARVEY_GREETINGS = [
-        "Goddamn it. You're back. Let's get to work.",
+        "Harvey. You've got my attention. Use it.",
         "You're in trouble or you wouldn't be calling. Tell me.",
         "Sit down. What are we dealing with.",
-        "Talk fast. I bill in six minute increments.",
-        "I'm listening. Make it count.",
+        "Talk fast. The meter's already running.",
         "You called. So it's bad. How bad.",
         "Whatever it is, we close it. Start talking.",
     ]

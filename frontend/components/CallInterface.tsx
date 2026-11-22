@@ -146,7 +146,7 @@ export function CallInterface({ onEnd }: Props) {
       } else {
         setPauseStartedAt(Date.now());
         // Off-the-record activated — kick a "drop lore" signal to the
-        // agent. Backend picks a Suits-flavored Mike/Jessica/Donna line
+        // agent. Backend picks an off-the-record war story
         // and Harvey speaks it so OTR is actually theatre, not just dim.
         if (localParticipant) {
           const payload = new TextEncoder().encode(
@@ -776,10 +776,10 @@ export function CallInterface({ onEnd }: Props) {
           page, now also available during an active call. Rendered
           outside the otr-dim wrapper so it stays full contrast. */}
       <CaseDocs open={docsOpen} onClose={() => setDocsOpen(false)} />
-      {/* DonnaFlash overlay removed — the full-screen shout was too
+      {/* Secretary-shout overlay removed — the full-screen shout was too
           much. The bit lives in Harvey's VOICE now: a short secretary
           line before he fires stock/news tools, ending in an audible,
-          drawn-out "DONNAAAAA" the TTS actually performs. */}
+          spoken aside the TTS actually performs. */}
     </div>
   );
 }

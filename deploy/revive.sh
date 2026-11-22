@@ -23,7 +23,7 @@ fi
 
 if [ ! -f data/chroma_db/chroma.sqlite3 ]; then
   echo "revive: data/chroma_db is missing, so the image would ship an empty statute index." >&2
-  echo "revive: copy a built index into data/chroma_db (2,806 chunks) or run backend/ingest_student_laws.py first." >&2
+  echo "revive: copy a built index into data/chroma_db (5,668 chunks) or run backend/ingest_student_laws.py first." >&2
   exit 1
 fi
 

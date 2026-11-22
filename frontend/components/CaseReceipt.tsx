@@ -5,7 +5,7 @@ import { Printer, X } from "lucide-react";
 import { useMemo } from "react";
 
 /**
- * "Statement of Services Rendered" — an itemized PSL-letterhead receipt
+ * "Statement of Services Rendered" — an itemized letterhead receipt
  * shown the moment the user clicks End Call. Theatrical, legally-styled,
  * and prints cleanly via window.print() (print CSS is in globals.css).
  *
@@ -30,7 +30,7 @@ interface Props {
 }
 
 // Mock billable rates (theatrical — the receipt ends at $0.00 with a
-// "retained by Pearson Specter Litt" discount line.)
+// "retained" discount line.)
 const RATE = {
   consultationPerHour: 1200, // $/hr
   statute: 400, // per lookup
@@ -81,7 +81,7 @@ export function CaseReceipt({
   // useMemo with [] stabilises it for the life of this receipt.
   const caseNo = useMemo(
     () =>
-      `PSL-${new Date().getFullYear()}-${Math.floor(
+      `HRV-${new Date().getFullYear()}-${Math.floor(
         1000 + Math.random() * 9000,
       )}`,
     [],
@@ -165,7 +165,7 @@ export function CaseReceipt({
           <div className="flex items-baseline justify-between">
             <div>
               <div className="font-display text-[24px] font-bold tracking-[-0.01em] text-[var(--foreground)]">
-                Pearson Specter Litt
+                Counsel on Call
               </div>
               <div className="font-mono text-[9px] uppercase tracking-[0.42em] text-[var(--foreground-muted)]">
                 Attorneys at Law · New York · Toronto
@@ -189,7 +189,7 @@ export function CaseReceipt({
 
         {/* Meta line */}
         <div className="mt-4 grid grid-cols-3 gap-4 font-mono text-[10px] uppercase tracking-[0.28em]">
-          <Meta label="Attorney" value="Harvey Specter" />
+          <Meta label="Attorney" value="Harvey" />
           <Meta
             label="Consultation"
             value={fmtDuration(durationSec)}
@@ -317,7 +317,7 @@ export function CaseReceipt({
           Thank you for calling.
         </div>
         <div className="mt-1 text-center font-mono text-[9px] uppercase tracking-[0.42em] text-[var(--foreground-faint)]">
-          Privileged · Confidential · © Pearson Specter Litt
+          Privileged · Confidential · © Counsel on Call
         </div>
 
         {/* Actions */}

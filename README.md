@@ -20,7 +20,7 @@ it's a demo, not legal advice. harvey says so himself when a question gets heavy
 
 ## what you can ask
 
-- **canadian legal questions.** he cites the statute from a 2,806 chunk corpus of ontario and federal law.
+- **canadian legal questions.** he cites the statute from a 5,668 chunk corpus of ontario and federal law.
 - **news.** he pulls live headlines and gives you the one sentence version.
 - **public companies.** live quote with price, change, day range and 52 week range.
 - **congressional trades.** recent stock act disclosures for a ticker.
@@ -63,23 +63,23 @@ one turn, start to finish:
 
 ## the rag part
 
-7 english sources, 2,806 chunks, stored in chroma.
+7 english sources, 5,668 chunks, stored in chroma.
 
 | source | chunks |
 |---|---|
 | ontario highway traffic act | 1,100 |
-| canada criminal code | 785 |
+| canada criminal code | 3,276 |
 | ontario residential tenancies act | 392 |
 | ontario employment standards act | 359 |
-| controlled drugs and substances act | 69 |
-| cannabis act | 57 |
+| controlled drugs and substances act | 240 |
+| cannabis act | 257 |
 | ontario consumer protection guides | 44 |
 
 plain cosine similarity kept failing on the way students actually ask things. "n12" has no semantic link to "notice of termination", and "assault" kept pulling the highway traffic act just because it has the most chunks.
 
 the fix was two stages:
 
-1. a small gpt-4o-mini call classifies the question, picks the source and rewrites the query.
+1. a small claude haiku 5.5 call (gpt-4o-mini if there's no anthropic key) classifies the question, picks the source, rewrites the query and guesses the likely section numbers.
 2. chroma searches inside that source if the classifier is confident (0.6 or higher), otherwise it searches everything with a keyword boost.
 
 chunks are 1000 characters with 200 overlap, embedded with `text-embedding-3-small`. the top chunk goes to the llm so he can say it, the top three go to the card on screen.

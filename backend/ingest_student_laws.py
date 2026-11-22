@@ -241,7 +241,7 @@ def fetch_text(statute: dict) -> str:
                 last_err = RuntimeError("response too short")
                 continue
             log.info("    %d bytes OK", len(r.content))
-            soup = BeautifulSoup(r.text, "lxml")
+            soup = BeautifulSoup(r.content, "lxml")
             for tag in soup(
                 ["script", "style", "nav", "header", "footer", "aside",
                  "noscript", "form", "iframe"]
@@ -291,14 +291,16 @@ def main() -> None:
 
     started = time.time()
     total = 0
+    only = set(sys.argv[sys.argv.index("--replace") + 1:]) if "--replace" in sys.argv else set()
     for s in STATUTES:
-        # Skip statutes we've already ingested (rerun safety).
+        if only and s["source"] not in only:
+            continue
         existing = store._collection.get(  # type: ignore[attr-defined]
             where={"source": s["source"]},
             include=[],
             limit=1,
         )
-        if existing["ids"]:
+        if existing["ids"] and not only:
             log.info("%s already ingested, skipping", s["title"])
             continue
 
@@ -324,6 +326,11 @@ def main() -> None:
                 "page": 0,
             },
         )
+        if only:
+            stale = store._collection.get(where={"source": s["source"]}, include=[])["ids"]  # type: ignore[attr-defined]
+            for i in range(0, len(stale), 500):
+                store._collection.delete(ids=stale[i:i + 500])  # type: ignore[attr-defined]
+            log.info("  removed %d old chunks", len(stale))
         chunks = splitter.split_documents([doc])
         log.info("  split into %d chunks", len(chunks))
         for c in chunks:

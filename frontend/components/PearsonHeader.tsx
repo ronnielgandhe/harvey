@@ -17,7 +17,7 @@ interface Props {
 }
 
 // Boot sequence timings (ms) — tuned for a deliberate, cinematic pace.
-// 900 → 1700           : PSL slides out from behind the slash (left)
+// 900 → 1700           : the wordmark slides out from behind the slash (left)
 // INTRO_FADE → HOLD    : full assembly holds centered
 // HOLD → END           : long expo-out glide up to the hero slot
 const INTRO_FADE = 1400;
@@ -203,14 +203,12 @@ export function PearsonHeader({
           opacity: { duration: INTRO_FADE / 1000, ease: [0.22, 0.9, 0.25, 1] },
         }}
       >
-        {/* Editorial "disjointed" layout — PSL floats high, Gandhe drops
+        {/* Editorial "disjointed" layout — the wordmark floats high, Gandhe drops
             low, an oversized slash cuts diagonally between them. */}
         <div className="pointer-events-auto relative -ml-5 flex items-center gap-2">
-          {/* PSL appears FIRST, alone — rises up from below while fading
+          {/* The wordmark appears FIRST, alone — rises up from below while fading
               in. Expo-out curve for a filmic settle. Ends at ~2.0s. */}
-          <motion.img
-            src="/psl-logo.png"
-            alt="Pearson Specter Litt"
+          <motion.span
             initial={{ clipPath: "inset(0 100% 0 0)" }}
             animate={{ clipPath: "inset(0 0% 0 0)" }}
             transition={{
@@ -218,11 +216,13 @@ export function PearsonHeader({
               delay: 0.5,
               ease: [0.22, 0.9, 0.25, 1],
             }}
-            style={{ filter: "brightness(0)", translateY: 8 }}
-            className="h-[148px] w-auto flex-shrink-0"
-          />
+            style={{ translateY: 8, fontSize: "96px", letterSpacing: "-0.03em" }}
+            className="flex-shrink-0 pr-[72px] font-display leading-none text-black"
+          >
+            Harvey
+          </motion.span>
           {/* Slash + Gandhe reveal TOGETHER, left-to-right, as a single
-              "/Gandhe" unit. Starts while PSL is still settling its last
+              "/Gandhe" unit. Starts while the wordmark is still settling its last
               150ms — keeps the hand-off seamless with no dead beat. */}
           <motion.span
             aria-hidden

@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { useMemo } from "react";
 
 /**
- * Signed "meet Harvey Specter" block. Sits on the LEFT of the idle
+ * Signed "meet Harvey" block. Sits on the LEFT of the idle
  * hero.
  *
  * Two reveal modes:
@@ -94,11 +94,11 @@ export function MeetHarvey() {
                 transformOrigin: "left bottom",
               }}
             >
-              Specter
+              On call
             </span>
           </motion.div>
 
-          <span className="sr-only">meet Harvey Specter</span>
+          <span className="sr-only">meet Harvey</span>
         </div>
       </div>
     );
@@ -167,11 +167,11 @@ export function MeetHarvey() {
               transformOrigin: "left bottom",
             }}
           >
-            Specter
+            On call
           </span>
         </motion.div>
 
-        <span className="sr-only">meet Harvey Specter</span>
+        <span className="sr-only">meet Harvey</span>
       </div>
     </div>
   );
