@@ -24,6 +24,11 @@ from livekit.agents import (
 )
 from livekit.plugins import deepgram, elevenlabs, openai, silero
 
+try:
+    from livekit.plugins import anthropic as lk_anthropic
+except Exception:  # pragma: no cover
+    lk_anthropic = None
+
 from prompts import HARVEY_SYSTEM_PROMPT
 from tools import ALL_TOOLS
 
@@ -52,9 +57,41 @@ class HarveyAgent(Agent):
 # Entrypoint
 # ---------------------------------------------------------------------------
 
+BRAINS = {
+    "opus": "claude-opus-5-5",
+    "sonnet": "claude-sonnet-5-5",
+    "haiku": "claude-haiku-5-5",
+}
+
+
+def build_llm(choice: str):
+    brain = choice if choice in BRAINS else os.getenv("HARVEY_BRAIN", "opus")
+    if lk_anthropic is not None and os.getenv("ANTHROPIC_API_KEY") and brain in BRAINS:
+        log.info("LLM: %s", BRAINS[brain])
+        return lk_anthropic.LLM(
+            model=BRAINS[brain],
+            max_tokens=8000,
+            parallel_tool_calls=True,
+            caching="ephemeral",
+        )
+    log.info("LLM: gpt-4o-mini (no ANTHROPIC_API_KEY set)")
+    return openai.LLM(model="gpt-4o-mini", parallel_tool_calls=True, temperature=0.7)
+
+
+async def caller_brain(ctx: JobContext) -> str:
+    import asyncio
+
+    try:
+        participant = await asyncio.wait_for(ctx.wait_for_participant(), timeout=5)
+        return (participant.attributes or {}).get("harvey.brain", "")
+    except Exception:
+        return ""
+
+
 async def entrypoint(ctx: JobContext) -> None:
     log.info("Connecting to room %s", ctx.room.name)
     await ctx.connect()
+    brain = await caller_brain(ctx)
 
     # Fire-and-forget RAG warmup. Runs on the worker that's already
     # spawned for THIS room (so no concurrent-boot contention), kicks
@@ -118,11 +155,7 @@ async def entrypoint(ctx: JobContext) -> None:
             smart_format=True,
             punctuate=True,
         ),
-        llm=openai.LLM(
-            model="gpt-4o-mini",
-            parallel_tool_calls=True,
-            temperature=0.7,
-        ),
+        llm=build_llm(brain),
         tts=elevenlabs.TTS(**tts_kwargs),
         vad=silero.VAD.load(),
         turn_detection=turn_detection,

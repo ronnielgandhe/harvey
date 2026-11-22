@@ -38,8 +38,8 @@ every one of these is a tool call, and every tool call opens its own pane on scr
    │  dispatches the call to the agent worker
    ▼
  python agent (fly.io)
-     deepgram nova-3        speech to text
-     gpt-4o-mini            llm + tool calling
+     deepgram nova-2        speech to text
+     claude                 llm + tool calling (you pick: opus 5.5, sonnet 5.5 or haiku 5.5)
      elevenlabs turbo v2.5  text to speech
      silero                 voice activity detection
 
@@ -57,7 +57,7 @@ one turn, start to finish:
 1. you hit call. the frontend gets a token and joins the room.
 2. the agent joins and says hello right away with a canned line, so you hear something before the llm is even warm.
 3. you talk. deepgram streams the transcript, vad and turn detection decide when you're done.
-4. the llm either answers or calls a tool.
+4. the llm either answers or calls a tool. you pick which claude model he runs on before you call.
 5. the tool publishes a json event on the livekit data channel. the frontend catches it and opens a pane.
 6. harvey talks, and the pinwheel reacts to his audio.
 
@@ -88,7 +88,7 @@ the first version of the corpus was bigger and worse. i ingested 31 pdfs includi
 
 ## tradeoffs i made
 
-- **gpt-4o-mini over gpt-4o.** first token in under a second and way cheaper. his answers are a tool call plus one to three sentences, so it's enough.
+- **you pick the brain.** the call screen lets you choose opus 5.5, sonnet 5.5 or haiku 5.5. the choice rides along as a participant attribute and the agent builds the llm from it. no anthropic key set, and it falls back to gpt-4o-mini.
 - **chroma embedded, not a managed vector db.** zero ops, ships inside the docker image. it would not scale sideways.
 - **livekit instead of raw webrtc.** turn detection, vad, transcripts and the data channel come for free.
 - **fixed corpus, no uploads.** the time went into retrieval quality and the ui instead.
@@ -96,7 +96,7 @@ the first version of the corpus was bigger and worse. i ingested 31 pdfs includi
 
 ## run it
 
-you need python 3.11+, node 20+, a livekit cloud project, and keys for openai, deepgram and elevenlabs.
+you need python 3.11+, node 20+, a livekit cloud project, and keys for anthropic, openai (embeddings and the retrieval router), deepgram and elevenlabs.
 
 agent:
 
@@ -127,4 +127,4 @@ npm run dev                          # http://localhost:3000
 
 ## built with
 
-livekit · deepgram nova-3 · gpt-4o-mini · elevenlabs turbo v2.5 · silero vad · langchain · chroma · next.js 16 · react · framer motion · tailwind · three.js · fly.io · vercel
+livekit · deepgram nova-2 · claude opus 5.5 / sonnet 5.5 / haiku 5.5 · elevenlabs turbo v2.5 · silero vad · langchain · chroma · next.js 16 · react · framer motion · tailwind · three.js · fly.io · vercel

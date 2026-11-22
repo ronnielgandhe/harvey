@@ -8,6 +8,7 @@ import { PearsonHeader } from "@/components/PearsonHeader";
 import { IncomingCall } from "@/components/IncomingCall";
 import { CallInterface } from "@/components/CallInterface";
 import { CaseDocs } from "@/components/CaseDocs";
+import { BrainPicker, type BrainId } from "@/components/BrainPicker";
 import type { ReceiptCounts } from "@/components/CaseReceipt";
 
 // Heavy Three.js — load client-side only to keep initial bundle small
@@ -31,6 +32,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [docsOpen, setDocsOpen] = useState(false);
+  const [brain, setBrain] = useState<BrainId>("opus");
   // Post-call "pause beat" — populated the moment the user ends a call.
   // The idle page uses this to swap the signature for a paper receipt
   // and the sonar phone for a "Call again" button. Cleared when they
@@ -43,7 +45,7 @@ export default function Home() {
     // Clear any leftover post-call receipt once a new call is on the way.
     setPostCall(null);
     try {
-      const res = await fetch("/api/token", { cache: "no-store" });
+      const res = await fetch(`/api/token?brain=${brain}`, { cache: "no-store" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error || `Token request failed (${res.status})`);
@@ -56,7 +58,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [brain]);
 
   const handleEnd = useCallback(
     (summary?: { durationSec: number; counts: ReceiptCounts }) => {
@@ -145,6 +147,7 @@ export default function Home() {
                     : null
                 }
               />
+              {!postCall && <BrainPicker value={brain} onChange={setBrain} />}
             </motion.div>
           ) : (
             <motion.div

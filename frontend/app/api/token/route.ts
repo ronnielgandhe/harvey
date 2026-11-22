@@ -7,6 +7,7 @@ export const revalidate = 0;
 const WINDOW_MS = 10 * 60 * 1000;
 const PER_IP = 5;
 const GLOBAL = 60;
+const BRAINS = new Set(["opus", "sonnet", "haiku"]);
 const hits = new Map<string, number[]>();
 let globalHits: number[] = [];
 
@@ -52,9 +53,13 @@ export async function GET(req: NextRequest) {
   const roomName = `harvey-room-${Date.now()}`;
   const identity = `client-${Math.random().toString(36).slice(2, 10)}`;
 
+  const requested = req.nextUrl.searchParams.get("brain") ?? "";
+  const brain = BRAINS.has(requested) ? requested : "opus";
+
   const at = new AccessToken(apiKey, apiSecret, {
     identity,
     ttl: 60 * 10,
+    attributes: { "harvey.brain": brain },
   });
 
   at.addGrant({
