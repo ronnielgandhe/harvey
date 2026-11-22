@@ -33,7 +33,6 @@ put_secret() {
   fi
 }
 
-# read from your shell or a local .env file, never hardcode them here.
 if [ -f .env ]; then set -a; . ./.env; set +a; fi
 for v in LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET OPENAI_API_KEY DEEPGRAM_API_KEY ELEVENLABS_API_KEY ELEVENLABS_VOICE_ID; do
   if [ -z "${!v:-}" ]; then echo "missing env var: $v" >&2; exit 1; fi
