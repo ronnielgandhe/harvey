@@ -86,6 +86,7 @@ export function CallInterface({ onEnd }: Props) {
   // localParticipant.setMicrophoneEnabled so the backend stops
   // receiving audio.
   const [muted, setMuted] = useState(false);
+  const [agentNotice, setAgentNotice] = useState<string | null>(null);
   // Pane Harvey has voice-expanded — rendered as a centered overlay
   // above the lane stacks. Clearing it (ESC, click-out, "dismiss")
   // returns the pane to its normal lane slot.
@@ -169,6 +170,7 @@ export function CallInterface({ onEnd }: Props) {
   // Single source of truth for the HUD label — one tile that swaps
   // content based on voice-assistant state. No separate activity feed.
   const statusLabel = useMemo(() => {
+    if (agentNotice) return agentNotice;
     switch (vaState) {
       case "connecting":
         return "Connecting";
@@ -183,7 +185,7 @@ export function CallInterface({ onEnd }: Props) {
       default:
         return "Standby";
     }
-  }, [vaState]);
+  }, [vaState, agentNotice]);
 
   // ─── Data channel listener — panes only, no evidence wall / memo ────────
   useDataChannel((msg) => {
@@ -432,6 +434,14 @@ export function CallInterface({ onEnd }: Props) {
         });
       } else if (action === "collapse" || action === "close") {
         setFocusedPaneId(null);
+      }
+    } else if (type === "agent_status") {
+      const message = String(payload.message ?? "");
+      if (payload.ok === false && message) {
+        console.error("[Harvey] agent status:", payload.stage, message);
+        setAgentNotice(message);
+      } else {
+        console.warn("[Harvey] agent status:", payload.stage, message);
       }
     } else if (type === "end_call") {
       // Voice-driven hang-up. Harvey just said a goodbye line; we flash

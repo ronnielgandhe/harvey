@@ -169,13 +169,17 @@ async def cite_statute(
     log.info("cite_statute(query=%r)", query)
     await _emit_tool_call(ctx, "cite_statute")
 
-    rag = get_rag()
+    try:
+        rag = await asyncio.to_thread(get_rag)
+    except Exception as exc:
+        log.error("cite_statute: RAG unavailable: %s", exc)
+        return "The statute database is down. Answer from general knowledge, say you can't pull the exact section right now, keep it short."
     # Retrieve a wider slate so we can filter bilingual/French chunks
     # (the corpus has both the English and French version of every
     # Canadian federal statute — French chunks sometimes outrank English
     # on Chroma's cosine because they share procedural vocabulary).
     try:
-        scored_raw = rag._store.similarity_search_with_score(query, k=10)
+        scored_raw = await asyncio.to_thread(rag._store.similarity_search_with_score, query, k=10)
     except Exception as exc:
         log.exception("cite_statute: Chroma search failed: %s", exc)
         scored_raw = []
@@ -239,7 +243,7 @@ async def cite_statute(
     # chunks only.
     french_text: str | None = None
     try:
-        fr_scored = rag._store.similarity_search_with_score(top_text, k=10)
+        fr_scored = await asyncio.to_thread(rag._store.similarity_search_with_score, top_text, k=10)
         fr_hits = [(d, s) for d, s in fr_scored if _looks_french(d.page_content)]
         fr_hits.sort(key=lambda x: x[1])
         if fr_hits:

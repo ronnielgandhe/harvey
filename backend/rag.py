@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
+from embeddings import OpenAIEmbeddings
 
 
 # PDFs ingested from multi-column layouts carry physical line-break

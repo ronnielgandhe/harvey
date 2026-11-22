@@ -7,10 +7,12 @@ Run:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import random
+import sys
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -18,11 +20,17 @@ from livekit.agents import (
     Agent,
     AgentSession,
     JobContext,
-    RoomInputOptions,
     WorkerOptions,
     cli,
+    llm,
+    tts,
 )
 from livekit.plugins import deepgram, elevenlabs, openai, silero
+
+try:
+    from livekit.plugins.turn_detector.multilingual import MultilingualModel
+except Exception:  # pragma: no cover
+    MultilingualModel = None
 
 try:
     from livekit.plugins import anthropic as lk_anthropic
@@ -64,23 +72,89 @@ BRAINS = {
 }
 
 
+DEFAULT_VOICE_ID = "nPczCjzI2devNBz1zQrb"
+
+
+def eleven_key() -> str:
+    return os.getenv("ELEVEN_API_KEY") or os.getenv("ELEVENLABS_API_KEY") or ""
+
+
+def missing_config() -> tuple[list[str], list[str]]:
+    fatal = [k for k in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "DEEPGRAM_API_KEY") if not os.getenv(k)]
+    if not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")):
+        fatal.append("ANTHROPIC_API_KEY or OPENAI_API_KEY (no LLM)")
+    if not (eleven_key() or os.getenv("OPENAI_API_KEY")):
+        fatal.append("ELEVEN_API_KEY or OPENAI_API_KEY (no TTS)")
+    degraded = []
+    if not os.getenv("OPENAI_API_KEY"):
+        degraded.append("OPENAI_API_KEY (cite_statute embeddings and router are off)")
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        degraded.append("ANTHROPIC_API_KEY (brain picker ignored, gpt-4o-mini only)")
+    if not eleven_key():
+        degraded.append("ELEVEN_API_KEY (Harvey voice off, OpenAI TTS only)")
+    return fatal, degraded
+
+
 def build_llm(choice: str):
     brain = choice if choice in BRAINS else os.getenv("HARVEY_BRAIN", "opus")
+    chain = []
     if lk_anthropic is not None and os.getenv("ANTHROPIC_API_KEY") and brain in BRAINS:
-        log.info("LLM: %s", BRAINS[brain])
-        return lk_anthropic.LLM(
-            model=BRAINS[brain],
-            max_tokens=8000,
-            parallel_tool_calls=True,
-            caching="ephemeral",
+        chain.append(
+            lk_anthropic.LLM(
+                model=BRAINS[brain],
+                max_tokens=1024,
+                parallel_tool_calls=True,
+                caching="ephemeral",
+            )
         )
-    log.info("LLM: gpt-4o-mini (no ANTHROPIC_API_KEY set)")
-    return openai.LLM(model="gpt-4o-mini", parallel_tool_calls=True, temperature=0.7)
+    if os.getenv("OPENAI_API_KEY"):
+        chain.append(openai.LLM(model="gpt-4o-mini", parallel_tool_calls=True, temperature=0.7))
+    log.info("LLM chain: %s", [m.model for m in chain])
+    if len(chain) == 1:
+        return chain[0]
+    return llm.FallbackAdapter(chain, attempt_timeout=20.0)
+
+
+def build_tts():
+    chain = []
+    if eleven_key():
+        chain.append(
+            elevenlabs.TTS(
+                api_key=eleven_key(),
+                voice_id=os.getenv("ELEVENLABS_VOICE_ID") or DEFAULT_VOICE_ID,
+                model=os.getenv("ELEVENLABS_MODEL", "eleven_turbo_v2_5"),
+                voice_settings=elevenlabs.VoiceSettings(
+                    stability=float(os.getenv("ELEVENLABS_STABILITY", "0.45")),
+                    similarity_boost=float(os.getenv("ELEVENLABS_SIMILARITY", "0.80")),
+                    style=float(os.getenv("ELEVENLABS_STYLE", "0.20")),
+                    use_speaker_boost=True,
+                    speed=float(os.getenv("ELEVENLABS_SPEED", "1.12")),
+                ),
+            )
+        )
+    if os.getenv("OPENAI_API_KEY"):
+        chain.append(
+            openai.TTS(
+                model="gpt-4o-mini-tts",
+                voice="onyx",
+                instructions="Deep, dry, fast-talking New York closer. Clipped sentences, total confidence.",
+            )
+        )
+    log.info("TTS chain: %s", [t.provider + ":" + t.model for t in chain])
+    if len(chain) == 1:
+        return chain[0]
+    return tts.FallbackAdapter(chain, max_retry_per_tts=1)
+
+
+async def publish_status(room: rtc.Room, stage: str, ok: bool, message: str) -> None:
+    payload = {"type": "agent_status", "payload": {"stage": stage, "ok": ok, "message": message}}
+    try:
+        await room.local_participant.publish_data(json.dumps(payload).encode("utf-8"), reliable=True)
+    except Exception as exc:
+        log.warning("agent_status publish failed: %s", exc)
 
 
 async def caller_brain(ctx: JobContext) -> str:
-    import asyncio
-
     try:
         participant = await asyncio.wait_for(ctx.wait_for_participant(), timeout=5)
         return (participant.attributes or {}).get("harvey.brain", "")
@@ -92,57 +166,30 @@ async def entrypoint(ctx: JobContext) -> None:
     log.info("Connecting to room %s", ctx.room.name)
     await ctx.connect()
     brain = await caller_brain(ctx)
+    fatal, degraded = missing_config()
+    for item in degraded:
+        log.warning("DEGRADED: missing %s", item)
+    if fatal:
+        log.error("CANNOT TALK: missing %s", ", ".join(fatal))
+        await publish_status(ctx.room, "config", False, "Harvey is offline: the agent is missing keys (" + ", ".join(fatal) + ").")
+        return
 
     # Fire-and-forget RAG warmup. Runs on the worker that's already
     # spawned for THIS room (so no concurrent-boot contention), kicks
     # off while Harvey's greeting plays, and is done well before the
     # user asks the first legal question. Protects us from chromadb's
     # cold-start Rust-pool flake on the first cite_statute call.
-    import asyncio as _asyncio
     async def _warm_rag() -> None:
         try:
             from rag import get_rag
             # get_rag() is synchronous + takes ~5s cold — run it in a
             # thread so we don't block the event loop that's driving
             # the greeting TTS.
-            await _asyncio.to_thread(get_rag)
+            await asyncio.to_thread(get_rag)
             log.info("RAG pre-warmed for room")
         except Exception as exc:  # pragma: no cover
             log.warning("RAG warmup failed: %s (will retry on first tool call)", exc)
-    _asyncio.create_task(_warm_rag())
-
-    voice_id = os.getenv("ELEVENLABS_VOICE_ID")
-    if not voice_id:
-        log.warning(
-            "ELEVENLABS_VOICE_ID not set — falling back to ElevenLabs default voice."
-        )
-
-    tts_kwargs: dict = {
-        # Lower-latency model — feels more alive in voice agent context
-        "model": "eleven_turbo_v2_5",
-        # Voice tuning — kills "AI" artifacts, locks closer to source
-        "voice_settings": elevenlabs.VoiceSettings(
-            stability=0.50,        # User-tuned
-            similarity_boost=0.85, # User-tuned
-            style=0.0,
-            use_speaker_boost=True,
-            speed=0.90,            # User-tuned
-        ),
-    }
-    if voice_id:
-        tts_kwargs["voice_id"] = voice_id
-
-    # Optional turn detector; falls back gracefully if plugin missing.
-    turn_detection = None
-    try:
-        from livekit.plugins.turn_detector.multilingual import MultilingualModel
-        turn_detection = MultilingualModel()
-    except Exception:  # pragma: no cover
-        try:
-            from livekit.plugins.turn_detector.english import EnglishModel
-            turn_detection = EnglishModel()
-        except Exception:
-            log.info("turn_detector plugin not available; using VAD-only endpointing.")
+    asyncio.create_task(_warm_rag())
 
     # Deepgram: nova-2 w/ explicit interim_results. nova-3 was returning
     # zero transcripts in livekit-agents 1.5.4 even with a healthy WS.
@@ -156,9 +203,9 @@ async def entrypoint(ctx: JobContext) -> None:
             punctuate=True,
         ),
         llm=build_llm(brain),
-        tts=elevenlabs.TTS(**tts_kwargs),
+        tts=build_tts(),
         vad=silero.VAD.load(),
-        turn_detection=turn_detection,
+        turn_detection=MultilingualModel() if MultilingualModel is not None else None,
         aec_warmup_duration=0,
     )
 
@@ -196,6 +243,37 @@ async def entrypoint(ctx: JobContext) -> None:
         "Off the record, I once won a case on a bet with Hardman. A bet. That's how sure I was. That's how sure I still am.",
     ]
 
+    @session.on("error")
+    def _on_error(ev) -> None:  # type: ignore[misc]
+        err = getattr(ev, "error", ev)
+        inner = getattr(err, "error", err)
+        recoverable = bool(getattr(err, "recoverable", False))
+        stage = type(err).__name__.replace("Error", "").lower() or "agent"
+        log.error("%s failure (recoverable=%s): %r", stage.upper(), recoverable, inner)
+        if not recoverable:
+            msg = {
+                "tts": "Harvey lost his voice: the text to speech provider rejected the request.",
+                "llm": "Harvey can't think right now: the language model provider rejected the request.",
+                "stt": "Harvey can't hear you: speech to text failed.",
+            }.get(stage, "Harvey hit an error.")
+            asyncio.ensure_future(publish_status(ctx.room, stage, False, msg))
+
+    def _on_availability(kind: str):
+        def handler(ev) -> None:
+            name = getattr(getattr(ev, kind, None), "provider", "?")
+            available = bool(getattr(ev, "available", False))
+            log.warning("%s fallback: %s available=%s", kind.upper(), name, available)
+            if not available:
+                asyncio.ensure_future(
+                    publish_status(ctx.room, kind, True, f"Harvey switched off {name} and is running on a backup {kind.upper()}.")
+                )
+        return handler
+
+    if isinstance(session.tts, tts.FallbackAdapter):
+        session.tts.on("tts_availability_changed", _on_availability("tts"))
+    if isinstance(session.llm, llm.FallbackAdapter):
+        session.llm.on("llm_availability_changed", _on_availability("llm"))
+
     @ctx.room.on("data_received")
     def _on_data(packet: rtc.DataPacket):  # type: ignore[misc]
         try:
@@ -230,7 +308,6 @@ async def entrypoint(ctx: JobContext) -> None:
     await session.start(
         agent=HarveyAgent(),
         room=ctx.room,
-        room_input_options=RoomInputOptions(),
     )
 
     # Signature greeting — hard-coded, sent straight to TTS so it fires
@@ -264,6 +341,13 @@ def prewarm(proc) -> None:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] in ("dev", "start", "console", "connect"):
+        fatal, degraded = missing_config()
+        for item in degraded:
+            log.warning("DEGRADED: missing %s", item)
+        if fatal:
+            log.error("CANNOT START: missing %s", ", ".join(fatal))
+            sys.exit(1)
     # Default init timeout is 10s which is too tight once torch + chroma
     # + legal prompt import all happen during cold start. Bump to 60s
     # so the worker has headroom on slow first spawns.
@@ -280,6 +364,7 @@ def main() -> None:
             # push past the 60s default on a cold machine.
             initialize_process_timeout=120,
             num_idle_processes=1,
+            agent_name=os.getenv("HARVEY_AGENT_NAME", ""),
         )
     )
 

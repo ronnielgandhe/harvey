@@ -27,13 +27,11 @@ WORKDIR /app
 # Install Python deps FIRST so the layer caches when only code changes.
 COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt \
-    # Silero VAD needs torch; pull the CPU wheels explicitly so we don't
-    # accidentally install the 2GB CUDA build on a Fargate task.
-    && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+    && pip install --no-cache-dir -r requirements.txt
 
 # Copy the agent code + RAG modules.
 COPY backend /app
+RUN python agent.py download-files
 
 # Copy the pre-built Chroma index + curated datasets. Baking the vector
 # store INTO the image is the simplest reliable path for this take-home —

@@ -40,7 +40,7 @@ every one of these is a tool call, and every tool call opens its own pane on scr
  python agent (fly.io)
      deepgram nova-2        speech to text
      claude                 llm + tool calling (you pick: opus 5.5, sonnet 5.5 or haiku 5.5)
-     elevenlabs turbo v2.5  text to speech
+     elevenlabs turbo v2.5  text to speech (openai tts as backup)
      silero                 voice activity detection
 
      tools:
@@ -122,7 +122,8 @@ npm run dev                          # http://localhost:3000
 ## deploy
 
 - **frontend on vercel.** root directory is `frontend/`, three env vars: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `NEXT_PUBLIC_LIVEKIT_URL`. the token route is rate limited per ip.
-- **agent on fly.io.** `bash deploy/fly-deploy.sh`. it reads your keys from the environment (or a local `.env`), sets them as fly secrets and deploys. the worker is outbound only, so there's no public http surface.
+- **agent on fly.io.** `bash deploy/revive.sh`. it reads your keys from the environment, checks each one against its provider, sets them as fly secrets and deploys. it never prints a value. the worker is outbound only, so there's no public http surface.
+- **testing a local worker next to the hosted one.** set `HARVEY_AGENT_NAME` and the worker only takes rooms explicitly dispatched to that name, so it never steals real calls. unset, it takes every room like before.
 - there's an aws fargate path in `deploy/DEPLOY.md` too.
 
 ## built with
