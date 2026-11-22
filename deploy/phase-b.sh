@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Phase B of the AWS deploy — runs AFTER the docker image has been pushed to ECR.
+# Phase B of the AWS deploy , runs AFTER the docker image has been pushed to ECR.
 # Creates secrets, IAM role, task def, cluster, and service. Tails the log at the end.
 #
 # Usage:
-#   cd /Users/ronniel/Desktop/harvey
+#   cd harvey
 #   bash deploy/phase-b.sh
 #
 # Requirements:
@@ -18,7 +18,7 @@ export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output tex
 echo "Account: $AWS_ACCOUNT_ID, Region: $AWS_REGION"
 
 # ---------------------------------------------------------------------------
-# Secrets — 7 values into AWS Secrets Manager. Idempotent: if a secret
+# Secrets , 7 values into AWS Secrets Manager. Idempotent: if a secret
 # already exists, put-secret-value updates it instead of failing.
 # ---------------------------------------------------------------------------
 put_secret() {
@@ -33,16 +33,15 @@ put_secret() {
   fi
 }
 
-put_secret harvey/LIVEKIT_URL          'wss://harvey-ppqpwwmf.livekit.cloud'
-put_secret harvey/LIVEKIT_API_KEY      'APIJZP2MvQGwRZ3'
-put_secret harvey/LIVEKIT_API_SECRET   'M6sXw2UvQwDYgwFsIz9OX4lhzUlJSfRSfsOR3UQYis0'
-put_secret harvey/OPENAI_API_KEY       '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'
-put_secret harvey/DEEPGRAM_API_KEY     'fb0aab80a6287a99b2feb71ad3142557dabf6b2e'
-put_secret harvey/ELEVENLABS_API_KEY   'sk_a8a32d106f494f4a09d7fc9a292cb01d09a360528c3b3f21'
-put_secret harvey/ELEVENLABS_VOICE_ID  'zKrDZgdznctDasaOp22c'
+# read from your shell or a local .env file, never hardcode them here.
+if [ -f .env ]; then set -a; . ./.env; set +a; fi
+for v in LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET OPENAI_API_KEY DEEPGRAM_API_KEY ELEVENLABS_API_KEY ELEVENLABS_VOICE_ID; do
+  if [ -z "${!v:-}" ]; then echo "missing env var: $v" >&2; exit 1; fi
+  put_secret "harvey/$v" "${!v}"
+done
 
 # ---------------------------------------------------------------------------
-# IAM execution role — lets the Fargate task pull the image from ECR +
+# IAM execution role , lets the Fargate task pull the image from ECR +
 # resolve those Secrets Manager references into env vars at boot.
 # ---------------------------------------------------------------------------
 sed -e "s/<ACCOUNT_ID>/$AWS_ACCOUNT_ID/g" -e "s/<REGION>/$AWS_REGION/g" \
@@ -68,7 +67,7 @@ echo "Waiting 8 seconds for IAM role to propagate..."
 sleep 8
 
 # ---------------------------------------------------------------------------
-# Task definition — interpolate placeholders, register.
+# Task definition , interpolate placeholders, register.
 # ---------------------------------------------------------------------------
 sed -e "s/<ACCOUNT_ID>/$AWS_ACCOUNT_ID/g" -e "s/<REGION>/$AWS_REGION/g" \
   deploy/task-definition.json > /tmp/task-definition.json
@@ -79,13 +78,13 @@ aws ecs register-task-definition \
   --query 'taskDefinition.taskDefinitionArn' --output text
 
 # ---------------------------------------------------------------------------
-# Cluster — idempotent.
+# Cluster , idempotent.
 # ---------------------------------------------------------------------------
 aws ecs create-cluster --cluster-name harvey --region "$AWS_REGION" >/dev/null
 echo "cluster: harvey"
 
 # ---------------------------------------------------------------------------
-# Network lookup — default VPC + first public subnet + default SG.
+# Network lookup , default VPC + first public subnet + default SG.
 # ---------------------------------------------------------------------------
 DEFAULT_VPC=$(aws ec2 describe-vpcs --filters "Name=isDefault,Values=true" \
   --query 'Vpcs[0].VpcId' --output text --region "$AWS_REGION")
@@ -97,12 +96,12 @@ DEFAULT_SG=$(aws ec2 describe-security-groups \
 echo "VPC=$DEFAULT_VPC  SUBNET=$SUBNET_ID  SG=$DEFAULT_SG"
 
 # ---------------------------------------------------------------------------
-# Service — one task, Fargate, public IP ON so the agent can reach
+# Service , one task, Fargate, public IP ON so the agent can reach
 # LiveKit/OpenAI/Deepgram/ElevenLabs.
 # ---------------------------------------------------------------------------
 if aws ecs describe-services --cluster harvey --services harvey-agent \
     --region "$AWS_REGION" --query 'services[0].status' --output text 2>/dev/null | grep -q ACTIVE; then
-  echo "service already exists — forcing a new deployment to pick up latest image"
+  echo "service already exists , forcing a new deployment to pick up latest image"
   aws ecs update-service --cluster harvey --service harvey-agent \
     --force-new-deployment --region "$AWS_REGION" >/dev/null
 else

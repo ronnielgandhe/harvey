@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fly.io deploy for Harvey.
 # Usage:
-#   cd /Users/ronniel/Desktop/harvey
+#   cd harvey
 #   bash deploy/fly-deploy.sh
 #
 # Requirements:
@@ -20,15 +20,21 @@ if ! fly status --app harvey-specter-agent >/dev/null 2>&1; then
 fi
 
 # --- Secrets ---
+# read from your shell or a local .env file, never hardcode them here.
+if [ -f .env ]; then set -a; . ./.env; set +a; fi
+for v in LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET OPENAI_API_KEY DEEPGRAM_API_KEY ELEVENLABS_API_KEY ELEVENLABS_VOICE_ID; do
+  if [ -z "${!v:-}" ]; then echo "missing env var: $v" >&2; exit 1; fi
+done
+
 fly secrets set \
-  LIVEKIT_URL='wss://harvey-ppqpwwmf.livekit.cloud' \
-  LIVEKIT_API_KEY='APIJZP2MvQGwRZ3' \
-  LIVEKIT_API_SECRET='M6sXw2UvQwDYgwFsIz9OX4lhzUlJSfRSfsOR3UQYis0' \
-  OPENAI_API_KEY='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' \
-  DEEPGRAM_API_KEY='fb0aab80a6287a99b2feb71ad3142557dabf6b2e' \
-  ELEVENLABS_API_KEY='sk_a8a32d106f494f4a09d7fc9a292cb01d09a360528c3b3f21' \
-  ELEVEN_API_KEY='sk_a8a32d106f494f4a09d7fc9a292cb01d09a360528c3b3f21' \
-  ELEVENLABS_VOICE_ID='zKrDZgdznctDasaOp22c' \
+  LIVEKIT_URL="$LIVEKIT_URL" \
+  LIVEKIT_API_KEY="$LIVEKIT_API_KEY" \
+  LIVEKIT_API_SECRET="$LIVEKIT_API_SECRET" \
+  OPENAI_API_KEY="$OPENAI_API_KEY" \
+  DEEPGRAM_API_KEY="$DEEPGRAM_API_KEY" \
+  ELEVENLABS_API_KEY="$ELEVENLABS_API_KEY" \
+  ELEVEN_API_KEY="$ELEVENLABS_API_KEY" \
+  ELEVENLABS_VOICE_ID="$ELEVENLABS_VOICE_ID" \
   --app harvey-specter-agent \
   --stage
 
@@ -39,7 +45,7 @@ fly deploy --app harvey-specter-agent --ha=false
 
 echo ""
 echo "==========================================================="
-echo "Deploy dispatched. Tailing logs — wait for 'registered worker'."
+echo "Deploy dispatched. Tailing logs, wait for 'registered worker'."
 echo "Press Ctrl+C when you see it."
 echo "==========================================================="
 fly logs --app harvey-specter-agent
