@@ -55,7 +55,6 @@ export function PostCallReceipt({ durationSec, counts, onBack }: Props) {
   const hillCost = counts.hill * RATE.hill;
   const subtotal =
     consultationCost + statuteCost + newsCost + stockCost + hillCost;
-  // 90% off — caller is a Bluejay verified member. Matches the confirm
   // modal's billing so the number the user sees before the End
   // doesn't jump around after they confirm.
   const discount = -subtotal * 0.9;
@@ -196,7 +195,7 @@ export function PostCallReceipt({ durationSec, counts, onBack }: Props) {
               colSpan={2}
               className="pt-0.5 text-right uppercase tracking-[0.28em] text-[8.5px] text-[var(--crimson)]"
             >
-              Bluejay verified member · 90% off
+              Friends and family · 90% off
             </td>
             <td className="pt-0.5 text-right tabular-nums text-[var(--crimson)]">
               {fmtUsd(discount)}
@@ -219,7 +218,7 @@ export function PostCallReceipt({ durationSec, counts, onBack }: Props) {
       {/* Footer quip + signature */}
       <div className="mt-4 border-t border-[var(--rule-strong)] pt-3 text-center">
         <div className="font-display text-[11.5px] italic leading-snug text-[var(--foreground-muted)]">
-          Thank you for using our Bluejay Voice Platform.
+          Thank you for calling.
         </div>
         <div className="mt-1 font-mono text-[8.5px] uppercase tracking-[0.42em] text-[var(--foreground-faint)]">
           Privileged · Confidential

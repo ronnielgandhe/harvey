@@ -11,7 +11,6 @@ import { useMemo } from "react";
  *
  *   CINEMATIC (first page load only)
  *     Starts at 6.9s mark, each line wipes in with a clip-path from
- *     left to right — matches the PSL × Bluejay glide-to-center pose
  *     so the signature lands like a sign-off on the logo.
  *
  *   INSTANT (every subsequent remount — e.g. "Back" from receipt)

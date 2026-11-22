@@ -17,7 +17,6 @@ import { useEffect, useRef, useState } from "react";
  * eyebrows, serif headlines, thin rules. Shows off the tech + features
  * without drowning the page in copy.
  *
- * Designed to match the Pearson Specter Litt / Bluejay wireframe vibe
  * — cream background, dark ink, skyline stays visible through it.
  */
 
@@ -273,7 +272,7 @@ export function CaseBrief() {
       {/* Disposition / fine print */}
       <div className="mt-20 flex flex-col items-start gap-3 border-t border-[var(--rule-strong)] pt-6 md:flex-row md:items-center md:justify-between">
         <div className="font-mono text-[10px] uppercase tracking-[0.4em] text-[var(--foreground-faint)]">
-          © 2026 · Pearson Specter Litt × Bluejay · Confidential · Privileged
+          © 2026 · Pearson Specter Litt · Confidential · Privileged
         </div>
         <a
           href="https://github.com/"

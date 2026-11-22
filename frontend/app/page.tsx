@@ -78,7 +78,7 @@ export default function Home() {
 
       {/* Foreground content sits above the skyline */}
       <div className="relative" style={{ zIndex: 10 }}>
-        {/* PSL × Bluejay header. In idle it sits in the hero slot; in
+        {/* PSL header. In idle it sits in the hero slot; in
             call it's pinned bottom-left. No scroll fade now that the
             idle page is single-screen. */}
         {conn ? (

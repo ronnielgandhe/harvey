@@ -96,7 +96,6 @@ function Sonar({ onAnswer, loading, disabled }: Omit<Props, "variant">) {
       disabled={disabled || loading}
       initial={{ opacity: 0, scale: 0.85 }}
       animate={{ opacity: 1, scale: 1 }}
-      // Hold until the PSL × Bluejay splash finishes its glide to the
       // center pose (~6.7s) before the phone scales in — keeps the
       // reveal order: logos land → signature writes in → phone appears.
       transition={{ duration: 0.9, delay: 7.0, ease: [0.19, 1, 0.22, 1] }}

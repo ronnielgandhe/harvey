@@ -18,7 +18,7 @@ import {
   MicOff,
   PhoneOff,
 } from "lucide-react";
-import { BluejayPinwheel } from "./BluejayPinwheel";
+import { VoicePinwheel } from "./VoicePinwheel";
 import { CaseDocs } from "./CaseDocs";
 import { GlassPaneStack, type Pane, type SeeAlsoItem } from "./GlassPaneStack";
 import { OffTheRecord } from "./OffTheRecord";
@@ -631,7 +631,7 @@ export function CallInterface({ onEnd }: Props) {
       {/* Dimming wrapper — OTR active = desaturated. The OTR overlay,
           receipt, and LiveIndicator sit OUTSIDE this so they stay crisp. */}
       <div className={otr ? "otr-dim" : ""}>
-        {/* Centered audio-reactive Bluejay pinwheel — this IS the voice.
+        {/* Centered audio-reactive pinwheel — this IS the voice.
             When Harvey expands a pane, the pinwheel shrinks + drops
             below the focused card so you can see it still spinning. */}
         {/* Ambient bottom pinwheel — ALWAYS small, ALWAYS pinned to
@@ -655,7 +655,7 @@ export function CallInterface({ onEnd }: Props) {
             }}
             style={{ zIndex: 1 }}
           >
-            <BluejayPinwheel
+            <VoicePinwheel
               size={320}
               pulse={vaState === "speaking"}
               micBands={userBands}

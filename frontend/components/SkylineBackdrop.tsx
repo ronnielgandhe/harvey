@@ -178,7 +178,6 @@ interface Props {
 export function SkylineBackdrop({ dimmed = false }: Props) {
   // Radial reveal — the skyline is fully rendered at z=0 from mount
   // but a page-colored overlay sits on top, punched with a growing
-  // circular hole at the PSL/Bluejay vanishing point. As the splash
   // logos glide to center, the hole grows outward so buildings
   // "arrive" at the viewer.
   //
