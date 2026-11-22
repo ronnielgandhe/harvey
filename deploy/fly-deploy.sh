@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fly.io deploy for Harvey.
 # Usage:
-#   cd harvey
+#   cd /Users/ronniel/Desktop/harvey
 #   bash deploy/fly-deploy.sh
 #
 # Requirements:
@@ -44,7 +44,7 @@ fly deploy --app harvey-specter-agent --ha=false
 
 echo ""
 echo "==========================================================="
-echo "Deploy dispatched. Tailing logs, wait for 'registered worker'."
+echo "Deploy dispatched. Tailing logs — wait for 'registered worker'."
 echo "Press Ctrl+C when you see it."
 echo "==========================================================="
 fly logs --app harvey-specter-agent

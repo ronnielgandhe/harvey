@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Phase B of the AWS deploy , runs AFTER the docker image has been pushed to ECR.
+# Phase B of the AWS deploy — runs AFTER the docker image has been pushed to ECR.
 # Creates secrets, IAM role, task def, cluster, and service. Tails the log at the end.
 #
 # Usage:
-#   cd harvey
+#   cd /Users/ronniel/Desktop/harvey
 #   bash deploy/phase-b.sh
 #
 # Requirements:
@@ -18,7 +18,7 @@ export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output tex
 echo "Account: $AWS_ACCOUNT_ID, Region: $AWS_REGION"
 
 # ---------------------------------------------------------------------------
-# Secrets , 7 values into AWS Secrets Manager. Idempotent: if a secret
+# Secrets — 7 values into AWS Secrets Manager. Idempotent: if a secret
 # already exists, put-secret-value updates it instead of failing.
 # ---------------------------------------------------------------------------
 put_secret() {
@@ -40,7 +40,7 @@ for v in LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET OPENAI_API_KEY DEEPGRAM_
 done
 
 # ---------------------------------------------------------------------------
-# IAM execution role , lets the Fargate task pull the image from ECR +
+# IAM execution role — lets the Fargate task pull the image from ECR +
 # resolve those Secrets Manager references into env vars at boot.
 # ---------------------------------------------------------------------------
 sed -e "s/<ACCOUNT_ID>/$AWS_ACCOUNT_ID/g" -e "s/<REGION>/$AWS_REGION/g" \
@@ -66,7 +66,7 @@ echo "Waiting 8 seconds for IAM role to propagate..."
 sleep 8
 
 # ---------------------------------------------------------------------------
-# Task definition , interpolate placeholders, register.
+# Task definition — interpolate placeholders, register.
 # ---------------------------------------------------------------------------
 sed -e "s/<ACCOUNT_ID>/$AWS_ACCOUNT_ID/g" -e "s/<REGION>/$AWS_REGION/g" \
   deploy/task-definition.json > /tmp/task-definition.json
@@ -77,13 +77,13 @@ aws ecs register-task-definition \
   --query 'taskDefinition.taskDefinitionArn' --output text
 
 # ---------------------------------------------------------------------------
-# Cluster , idempotent.
+# Cluster — idempotent.
 # ---------------------------------------------------------------------------
 aws ecs create-cluster --cluster-name harvey --region "$AWS_REGION" >/dev/null
 echo "cluster: harvey"
 
 # ---------------------------------------------------------------------------
-# Network lookup , default VPC + first public subnet + default SG.
+# Network lookup — default VPC + first public subnet + default SG.
 # ---------------------------------------------------------------------------
 DEFAULT_VPC=$(aws ec2 describe-vpcs --filters "Name=isDefault,Values=true" \
   --query 'Vpcs[0].VpcId' --output text --region "$AWS_REGION")
@@ -95,12 +95,12 @@ DEFAULT_SG=$(aws ec2 describe-security-groups \
 echo "VPC=$DEFAULT_VPC  SUBNET=$SUBNET_ID  SG=$DEFAULT_SG"
 
 # ---------------------------------------------------------------------------
-# Service , one task, Fargate, public IP ON so the agent can reach
+# Service — one task, Fargate, public IP ON so the agent can reach
 # LiveKit/OpenAI/Deepgram/ElevenLabs.
 # ---------------------------------------------------------------------------
 if aws ecs describe-services --cluster harvey --services harvey-agent \
     --region "$AWS_REGION" --query 'services[0].status' --output text 2>/dev/null | grep -q ACTIVE; then
-  echo "service already exists , forcing a new deployment to pick up latest image"
+  echo "service already exists — forcing a new deployment to pick up latest image"
   aws ecs update-service --cluster harvey --service harvey-agent \
     --force-new-deployment --region "$AWS_REGION" >/dev/null
 else
